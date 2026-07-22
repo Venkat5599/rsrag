@@ -1,23 +1,18 @@
-"""
-CLNEA Pipeline Orchestrator
-"""
-
 import os, uuid, logging
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Any
-# from rouge_score import rouge_scorer
-# from bert_score import score as bertscore_fn
+
+
 import pytesseract
 from pdf2image import convert_from_bytes
 from sentence_transformers import SentenceTransformer, util
 
-pytesseract.pytesseract.tesseract_cmd = "/opt/homebrew/bin/tesseract"
+pytesseract.pytesseract.tesseract_cmd = os.getenv("TESSERACT_CMD", "tesseract")
 
 logger = logging.getLogger(__name__)
 
-# ──  V3 Non-Legal Classifier (Hybrid + Semantic) ───────────
 
 LEGAL_PROTOTYPES = [
     "This agreement is made between two parties and defines obligations.",
@@ -32,7 +27,7 @@ NON_LEGAL_PROTOTYPES = [
     "Random notes and thoughts written casually",
 ]
 
-# 🔥 cache embeddings (IMPORTANT)
+
 _legal_embs = None
 _non_legal_embs = None
 
@@ -43,7 +38,7 @@ def is_legal_text_v3(text: str) -> bool:
     text_lower = text.lower()
     word_count = len(text.split())
 
-    # 🔹 keyword signals
+
     legal_keywords = [
         "agreement", "contract", "party", "shall", "liability",
         "termination", "confidential", "governing law",
@@ -58,7 +53,7 @@ def is_legal_text_v3(text: str) -> bool:
     legal_hits = sum(1 for kw in legal_keywords if kw in text_lower)
     non_legal_hits = sum(1 for kw in non_legal_keywords if kw in text_lower)
 
-    # 🔹 structural signals
+
     has_sections = bool(re.search(r"\n\s*\d+[\.\)]", text))
     has_caps_headers = bool(re.search(r"\n[A-Z\s]{5,}\n", text))
 
@@ -67,7 +62,7 @@ def is_legal_text_v3(text: str) -> bool:
         if len(s.split()) > 20
     )
 
-    # 🔹 semantic similarity (SAFE)
+
     legal_sim = 0.0
     non_legal_sim = 0.0
 
@@ -85,9 +80,9 @@ def is_legal_text_v3(text: str) -> bool:
             non_legal_sim = float(util.cos_sim(text_emb, _non_legal_embs).max().item())
 
         except:
-            pass  # don't break classifier
+            pass
 
-    # 🔹 scoring
+
     score = 0
     score += legal_hits * 2
     score += 2 if has_sections else 0
@@ -97,10 +92,9 @@ def is_legal_text_v3(text: str) -> bool:
     score -= non_legal_sim * 2
     score -= non_legal_hits * 2
 
-    # 🔥 relaxed threshold (IMPORTANT)
+
     return score >= 4 and word_count > 50
 
-# Helpers
 
 def split_text(text, chunk_size=1200, overlap=200):
     return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size - overlap)]
@@ -134,9 +128,6 @@ def clean_text(text):
     return text.strip()
 
 
-
-# FINAL FILTERING LOGIC 
-
 GENERIC_BAD = [
     "to the extent",
     "in accordance",
@@ -146,7 +137,6 @@ GENERIC_BAD = [
     "herein",
 ]
 
-# Model Cache
 
 MODEL_CACHE_DIR = Path(os.getenv("CLNEA_MODEL_CACHE", ".hf-cache")).resolve()
 MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -161,8 +151,6 @@ _model        = None
 _semantic_model = None
 
 
-# Model Loading
-
 def preload_models():
     global _qa_pipeline, _ner_pipeline, _tokenizer, _model, _semantic_model
 
@@ -175,7 +163,7 @@ def preload_models():
     )
     import torch
 
-    # 🔥 Load QA / NER / Pegasus ONLY if not loaded
+
     if _qa_pipeline is None:
         logger.info("Loading QA model...")
         qa_tokenizer = AutoTokenizer.from_pretrained(
@@ -210,12 +198,11 @@ def preload_models():
             device=-1
         )
 
-    # 🔥 ALWAYS ensure semantic model loads
+
     if _semantic_model is None:
         logger.info("Loading semantic reranker model...")
         _semantic_model = SentenceTransformer("all-MiniLM-L6-v2")
-    
-# Stage 1 OCR
+
 
 import pytesseract
 from pdf2image import convert_from_bytes
@@ -236,13 +223,10 @@ def stage1_ocr(pdf_bytes: bytes) -> str:
 
     full_text = "\n".join(pages)
 
-    print("OCR SAMPLE:", full_text[:500])  # 🔍 debug
+    print("OCR SAMPLE:", full_text[:500])
     logger.info(f"OCR done: {len(full_text)} chars")
 
     return full_text
-
-
-# Stage 2 (FINAL IMPROVED)
 
 
 MIN_WORDS = 3
@@ -271,7 +255,7 @@ CUAD_QUESTIONS = {
     "Dispute Resolution": "How are disputes resolved?",
     "Arbitration": "Is arbitration mentioned in the agreement?",
     "Force Majeure": "What happens in case of events beyond control?",
-    "Indemnification": "Who indemnifies whom under this agreement?", 
+    "Indemnification": "Who indemnifies whom under this agreement?",
     "Non-Compete": "Is there any restriction on competing activities?",
     "Non-Disparagement": "Is there any restriction on negative statements?",
     "Anti-Assignment": "Can this agreement be assigned to another party?",
@@ -282,7 +266,7 @@ CUAD_QUESTIONS = {
     "Insurance": "What insurance requirements are specified?",
     "Amendment": "How can this agreement be changed or amended?",
     "Renewal Term": "Does this agreement automatically renew?",
-    "Severability": "Is there a clause about invalid provisions?", 
+    "Severability": "Is there a clause about invalid provisions?",
     "Entire Agreement": "Does this agreement represent the entire understanding?",
     "Waiver": "Is there a waiver clause mentioned?",
 }
@@ -316,7 +300,7 @@ CLAUSE_KEYWORDS = {
     "Amendment": ["amend", "amendment", "modify", "modification"],
     "Renewal Term": ["renew", "renewal", "automatically renew", "auto-renew"],
     "Revenue or Profit Sharing": ["revenue", "profit", "share", "profit sharing"],
-    "Minimum Commitment": ["minimum", "commitment", "minimum purchase", "obligation"],  
+    "Minimum Commitment": ["minimum", "commitment", "minimum purchase", "obligation"],
     "Volume Restriction": ["volume", "limit", "restriction", "quota"],
     "Third Party Beneficiary": ["third party", "beneficiary"],
     "Source Code Escrow": ["escrow", "source code", "code escrow"],
@@ -331,7 +315,7 @@ CLAUSE_KEYWORDS = {
     "Warranty Duration": ["warranty", "guarantee", "duration", "warranty period"],
 }
 
-#stage-2 helpers
+
 def _clean_stage2_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
@@ -404,15 +388,15 @@ def stage2_clause_segmentation(text: str) -> dict:
 
                 if fallback_ans:
                     ans = fallback_ans
-                    qa_score = 0.25  # low confidence fallback
+                    qa_score = 0.25
                 else:
                     continue
 
-                # ❌ remove generic legal junk
+
                 if any(p in ans.lower() for p in GENERIC_PATTERNS):
                     continue
 
-                # 🔥 keyword relevance (CRITICAL FIX)
+
                 keywords = CLAUSE_KEYWORDS.get(clause_type, [])
                 if keywords and not any(k in ans.lower() for k in keywords):
                     if qa_score < 0.3:
@@ -421,7 +405,7 @@ def stage2_clause_segmentation(text: str) -> dict:
                 if clause_type == "Payment Terms":
                     if "tax" in ans.lower():
                         continue
-                # ✅ use improved scoring (you already defined it)
+
                 final_score = _score_candidate(question, ans, qa_score, clause_type)
 
                 candidates.append((ans, final_score))
@@ -429,28 +413,28 @@ def stage2_clause_segmentation(text: str) -> dict:
             except Exception as e:
                 print("QA ERROR:", e)
 
-        # ✅ pick best candidate
+
         if candidates:
             best_ans, raw_score = max(candidates, key=lambda x: x[1])
 
             confidence = raw_score
 
-            # keyword penalty
+
             keyword_strength = _keyword_score(best_ans, clause_type)
             if keyword_strength < 0.2:
                 confidence *= 0.7
 
-            # generic penalty
+
             if any(p in best_ans.lower() for p in GENERIC_PATTERNS):
                 confidence *= 0.6
 
-            # short answer penalty
+
             if len(best_ans.split()) < 4:
                 confidence *= 0.75
 
             confidence = round(min(confidence, 1.0), 4)
 
-            # 🔥 prevent duplicate spans across clauses
+
             if best_ans in [v["span"] for v in spans.values()]:
                 continue
 
@@ -461,8 +445,6 @@ def stage2_clause_segmentation(text: str) -> dict:
     logger.info(f"Stage 2 done: {len(spans)} clauses found")
     return spans
 
-
-# Stage 3 (Improved + stable)
 
 CLAUSE_SCHEMA = {
     "Governing Law":               ["GPE", "LOC", "DATE", "ORG"],
@@ -546,22 +528,22 @@ def stage3_ner(clause_spans: dict) -> dict:
 
             key = (text.lower(), label)
 
-            # ✅ basic cleaning
+
             if not text or len(text) < 3:
                 continue
 
             if text.lower() in STOPWORDS:
                 continue
 
-            # ✅ schema filtering
+
             if label not in valid:
                 continue
 
-            # ✅ dedup (stronger)
+
             if key in seen:
                 continue
 
-            # ✅ refined thresholds (less noise)
+
             if label in ["MONEY", "DATE"]:
                 threshold = 0.6
             elif label in ["ORG", "PERSON"]:
@@ -580,7 +562,7 @@ def stage3_ner(clause_spans: dict) -> dict:
                 "score": round(score, 4)
             })
 
-        # 🔥 smarter boost (prevents overconfidence)
+
         if filtered:
             boost = min(0.12, len(filtered) * 0.02)
             clause_spans[clause_type]["score"] = min(
@@ -593,7 +575,6 @@ def stage3_ner(clause_spans: dict) -> dict:
     logger.info(f"Stage 3 done: {sum(len(v) for v in results.values())} entities")
     return results
 
-# ── Stage 4: Hallucination-safe summarization ─────────────────────
 
 PRIORITY_CLAUSES = [
     "Parties", "Effective Date", "Governing Law",
@@ -625,7 +606,7 @@ def stage4_summarize(clause_spans: dict, entities_per_clause: dict) -> dict:
         "Governing Law"
     ]
 
-    # 🔹 STEP 1: select best clauses
+
     selected = []
 
     for clause in IMPORTANT:
@@ -637,7 +618,7 @@ def stage4_summarize(clause_spans: dict, entities_per_clause: dict) -> dict:
             if span and score >= 0.5:
                 selected.append((clause, span))
 
-    # fallback if too few
+
     if len(selected) < 3:
         others = sorted(
             clause_spans.items(),
@@ -651,20 +632,20 @@ def stage4_summarize(clause_spans: dict, entities_per_clause: dict) -> dict:
             if len(selected) >= 5:
                 break
 
-    # 🔹 STEP 2: build coherent sentences
+
     sentences = []
 
     for clause, span in selected:
         span = re.sub(r"\s+", " ", span).strip()
 
-        # clean clause prefix
+
         span = re.sub(rf"^{clause}\s*", "", span, flags=re.IGNORECASE)
 
-        # 🔥 make sentence readable
+
         if not span.endswith("."):
             span += "."
 
-        # 🔥 convert to natural phrasing
+
         if clause == "Parties":
             sentences.append(f"The agreement is between {span}")
         elif clause == "Effective Date":
@@ -682,7 +663,7 @@ def stage4_summarize(clause_spans: dict, entities_per_clause: dict) -> dict:
         else:
             sentences.append(span)
 
-    # 🔹 STEP 3: final summary
+
     summary = " ".join(sentences[:5])
 
     return {
@@ -691,104 +672,6 @@ def stage4_summarize(clause_spans: dict, entities_per_clause: dict) -> dict:
         "prompt_tokens": len(summary.split())
     }
 
-#Evaluation Metrics
-
-# import string
-
-# # TEXT NORMALIZATION
-
-# def _normalize(text):
-#     text = text.lower()
-#     text = text.translate(str.maketrans("", "", string.punctuation))
-#     return text.split()
-
-# # SPAN F1 (Stage 2)
-
-# def compute_span_f1(pred: str, gold: str) -> float:
-#     p = set(_normalize(pred))
-#     g = set(_normalize(gold))
-
-#     if not p or not g:
-#         return 0.0
-
-#     common = len(p & g)
-#     precision = common / len(p)
-#     recall = common / len(g)
-
-#     if precision + recall == 0:
-#         return 0.0
-
-#     return round(2 * precision * recall / (precision + recall), 4)
-
-# # EXACT MATCH
-
-# def compute_exact_match(pred: str, gold: str) -> float:
-#     return 1.0 if pred.strip().lower() == gold.strip().lower() else 0.0
-
-
-# # MACRO F1 (across clauses)
-# def compute_macro_f1(pred_spans: dict, gold_spans: dict) -> dict:
-#     f1_scores = {}
-#     em_scores = {}
-
-#     for clause_type, gold_text in gold_spans.items():
-#         if clause_type not in pred_spans:
-#             continue
-
-#         pred_data = pred_spans.get(clause_type, {})
-#         pred_text = pred_data.get("span", "")
-
-#         f1 = compute_span_f1(pred_text, gold_text)
-#         em = compute_exact_match(pred_text, gold_text)
-
-#         f1_scores[clause_type] = f1
-#         em_scores[clause_type] = em
-
-#     macro_f1 = round(sum(f1_scores.values()) / len(f1_scores), 4) if f1_scores else 0.0
-#     em_avg = round(sum(em_scores.values()) / len(em_scores), 4) if em_scores else 0.0
-
-#     return {
-#         "macro_f1": macro_f1,
-#         "exact_match": em_avg,
-#         "per_clause_f1": f1_scores,
-#     }
-
-# # ROUGE-L (Stage 4)
-# def compute_rouge_l(summary: str, gold_text: str) -> float:
-#     try:
-#         scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
-#         score = scorer.score(gold_text, summary)
-#         return round(score["rougeL"].fmeasure, 4)
-#     except:
-#         return 0.0
-
-
-# # BERTScore (Stage 4 semantic)
-
-# def compute_bertscore(summary: str, gold_text: str) -> float:
-#     try:
-#         P, R, F1 = bertscore_fn([summary], [gold_text], lang="en")
-#         return round(F1.mean().item(), 4)
-#     except:
-#         return 0.0
-
-# # FINAL METRICS WRAPPER
-
-# def compute_all_metrics(pred_spans, gold_spans, summary=""):
-#     metrics = compute_macro_f1(pred_spans, gold_spans)
-
-#     if gold_spans and summary:
-#         gold_text = " ".join(gold_spans.values())
-
-#         metrics["rougeL"] = compute_rouge_l(summary, gold_text)
-#         metrics["bert_score"] = compute_bertscore(summary, gold_text)
-
-#     metrics["n_clauses_found"] = len(pred_spans)
-#     metrics["n_gold_clauses"] = len(gold_spans)
-
-#     return metrics
-
-# Pipeline
 
 def run_pipeline(pdf_bytes: bytes, filename: str):
     text = stage1_ocr(pdf_bytes)
@@ -803,7 +686,7 @@ def run_pipeline_on_text(text: str, filename: str, gold_spans: Optional[dict] = 
 
     if not text or len(text.strip()) < 50:
         return {"error": "Text too short"}
-    
+
     if not is_legal_text_v3(text):
         return {"error": "Uploaded content does not appear to be a legal document"}
 
@@ -812,13 +695,8 @@ def run_pipeline_on_text(text: str, filename: str, gold_spans: Optional[dict] = 
     clauses = normalize_scores(clauses)
     entities = stage3_ner(clauses)
     summary = stage4_summarize(clauses, entities)
-    # metrics = {}
-    # if gold_spans:
-    #     metrics = compute_all_metrics(
-    #         clauses,                    
-    #         gold_spans,
-    #         summary=summary["summary"] 
-    #     )
+
+
     clauses_clean = {}
     for clause_type in set(list(clauses.keys()) + list(entities.keys())):
         span_data = clauses.get(clause_type, {})

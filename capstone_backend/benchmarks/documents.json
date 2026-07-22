@@ -1,0 +1,51 @@
+[
+  {
+    "docId": "msa-001",
+    "filename": "master_services_agreement.pdf",
+    "clauses": {
+      "Parties": {
+        "span": "This Master Services Agreement is entered into between Acme Corporation and Globex Limited.",
+        "score": 0.91,
+        "page": 1,
+        "section": "Preamble",
+        "entities": [
+          { "text": "Acme Corporation", "label": "ORG", "score": 0.96 },
+          { "text": "Globex Limited", "label": "ORG", "score": 0.94 }
+        ]
+      },
+      "Termination for Convenience": {
+        "span": "Either party may terminate this Agreement for convenience upon thirty (30) days prior written notice to the other party.",
+        "score": 0.84,
+        "page": 12,
+        "section": "Clause 8.2",
+        "entities": [{ "text": "thirty (30) days", "label": "DATE", "score": 0.9 }]
+      },
+      "Payment Terms": {
+        "span": "The Customer shall pay each undisputed invoice within forty-five (45) days of receipt.",
+        "score": 0.8,
+        "page": 7,
+        "section": "Clause 5.1",
+        "entities": [{ "text": "forty-five (45) days", "label": "DATE", "score": 0.88 }]
+      },
+      "Limitation of Liability": {
+        "span": "The aggregate liability of either party shall not exceed the fees paid in the twelve months preceding the claim.",
+        "score": 0.78,
+        "page": 15,
+        "section": "Clause 11.3"
+      },
+      "Governing Law": {
+        "span": "This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware.",
+        "score": 0.82,
+        "page": 18,
+        "section": "Clause 14.1",
+        "entities": [{ "text": "Delaware", "label": "GPE", "score": 0.9 }]
+      },
+      "Confidentiality": {
+        "span": "Each party shall keep the Confidential Information of the other party in confidence for five years following disclosure.",
+        "score": 0.86,
+        "page": 9,
+        "section": "Clause 6.1"
+      }
+    }
+  }
+]

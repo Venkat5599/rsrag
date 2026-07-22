@@ -1,8 +1,3 @@
-"""
-Stage 1 (OCR) → Stage 2 (DeBERTa QA) →
-Stage 3 (LegalBERT NER) → Stage 4 (Legal-Pegasus summary)
-"""
-
 import os, uuid, logging
 from datetime import datetime
 from pathlib import Path
@@ -18,7 +13,7 @@ MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("HF_HOME", str(MODEL_CACHE_DIR))
 os.environ.setdefault("HUGGINGFACE_HUB_CACHE", str(MODEL_CACHE_DIR / "hub"))
 
-# ── Lazy model holders ────────────────────────────────────────────
+
 _qa_pipeline  = None
 _ner_pipeline = None
 _tokenizer    = None
@@ -28,7 +23,6 @@ _summ_v1      = None
 
 
 def preload_models():
-    """Load all models at startup. Slow on first call, cached after."""
     global _qa_pipeline, _ner_pipeline, _tokenizer, _model
 
     from transformers import (
@@ -89,12 +83,10 @@ def preload_models():
     logger.info("All CLNEA models loaded.")
 
 
-# ── Non-Legal Classifier ────────────────────────────────
-
 def is_legal_text(text: str) -> bool:
     text_lower = text.lower()
 
-    # legal keywords
+
     legal_keywords = [
         "agreement", "contract", "party", "parties",
         "shall", "hereby", "whereas", "liability",
@@ -102,7 +94,7 @@ def is_legal_text(text: str) -> bool:
         "governing law", "jurisdiction", "obligation"
     ]
 
-    # non-legal indicators
+
     non_legal_keywords = [
         "hey", "hello", "thanks", "regards", "lol",
         "please find attached", "hi team", "good morning"
@@ -111,7 +103,7 @@ def is_legal_text(text: str) -> bool:
     legal_hits = sum(1 for kw in legal_keywords if kw in text_lower)
     non_legal_hits = sum(1 for kw in non_legal_keywords if kw in text_lower)
 
-    # structure signals
+
     has_sections = bool(re.search(r"\n\s*\d+[\.\)]", text))
     has_caps_headers = bool(re.search(r"\n[A-Z\s]{5,}\n", text))
     has_long_sentences = any(len(s.split()) > 20 for s in text.split("."))
@@ -127,7 +119,7 @@ def is_legal_text(text: str) -> bool:
 
     return score >= 4 and word_count > 80
 
-# ── Stage 1: OCR ─────────────────────────────────────────────────
+
 def stage1_ocr(pdf_bytes: bytes) -> str:
     import pytesseract
     from pdf2image import convert_from_bytes
@@ -138,8 +130,8 @@ def stage1_ocr(pdf_bytes: bytes) -> str:
     full_text = "\n".join(pages)
     logger.info(f"Stage 1 done: {len(full_text)} chars, {len(images)} pages")
     return full_text
- 
-# ── Stage 2: Clause segmentation ─────────────────────────────────
+
+
 CUAD_QUESTIONS = {
     "Governing Law":               "What law governs this contract?",
     "Parties":                     "Who are the parties to this agreement?",
@@ -188,17 +180,17 @@ CUAD_QUESTIONS = {
 def stage2_clause_segmentation(text: str, threshold: float = 0.30) -> dict:
     logger.info("Stage 2: Clause segmentation...")
 
-    # 🔥 FIX 1: ensure model loaded
+
     if _qa_pipeline is None:
         raise RuntimeError("QA pipeline not initialized. Call preload_models() first.")
 
-    context = text[:4096]  # DeBERTa 512-token safe window
+    context = text[:4096]
     spans   = {}
-    used_spans = set()  # 🔥 FIX 2: dedup
+    used_spans = set()
 
     for clause_type, question in CUAD_QUESTIONS.items():
         try:
-            res = _qa_pipeline(  # type: ignore
+            res = _qa_pipeline(
                 question=question,
                 context=context,
                 max_answer_len=200,
@@ -212,11 +204,11 @@ def stage2_clause_segmentation(text: str, threshold: float = 0.30) -> dict:
 
                 span = ans.strip()
 
-                # 🔥 FIX 3: remove duplicates
+
                 if span in used_spans:
                     continue
 
-                # 🔥 FIX 4: remove weak spans
+
                 if len(span.split()) < 3:
                     continue
 
@@ -234,7 +226,7 @@ def stage2_clause_segmentation(text: str, threshold: float = 0.30) -> dict:
 
     logger.info(f"Stage 2 done: {len(spans)} clauses found")
     return spans
-# ── Stage 3: Clause-conditioned NER ──────────────────────────────
+
 CLAUSE_SCHEMA = {
     "Governing Law":               ["GPE", "LOC", "DATE", "ORG"],
     "Parties":                     ["ORG", "PERSON"],
@@ -285,7 +277,7 @@ NER_THRESHOLD     = 0.75
 def stage3_ner(clause_spans: dict) -> dict:
     logger.info("Stage 3: Clause-conditioned NER...")
 
-    # 🔥 FIX 1: ensure model loaded
+
     if _ner_pipeline is None:
         raise RuntimeError("NER pipeline not initialized. Call preload_models() first.")
 
@@ -296,7 +288,7 @@ def stage3_ner(clause_spans: dict) -> dict:
         valid_labels = CLAUSE_SCHEMA.get(clause_type, DEFAULT_SCHEMA)
 
         try:
-            raw_ents = _ner_pipeline(span_text) or [] # type: ignore
+            raw_ents = _ner_pipeline(span_text) or []
         except Exception as e:
             logger.debug(f"  Stage 3 NER error '{clause_type}': {e}")
             results[clause_type] = []
@@ -335,7 +327,6 @@ def stage3_ner(clause_spans: dict) -> dict:
     return results
 
 
-# ── Stage 4: Entity-aware summarization ──────────────────────────
 PRIORITY_CLAUSES = [
     "Parties", "Effective Date", "Governing Law",
     "Termination for Convenience", "Confidentiality",
@@ -388,7 +379,7 @@ def stage4_summarize(clause_spans: dict, entities_per_clause: dict) -> dict:
     logger.info(f"Stage 4: prompt = {prompt_tokens} tokens")
 
     with torch.no_grad():
-        out = _model.generate( # type: ignore
+        out = _model.generate(
             input_ids,
             num_beams=4,
             no_repeat_ngram_size=3,
@@ -404,37 +395,33 @@ def stage4_summarize(clause_spans: dict, entities_per_clause: dict) -> dict:
     return {"summary": summary, "prompt_tokens": prompt_tokens, "prompt": prompt}
 
 
-# ── Full pipeline ─────────────────────────────────────────────────
-# route for pdf files
 def run_pipeline(pdf_bytes: bytes, filename: str) -> dict:
-    text = stage1_ocr(pdf_bytes) #ocr extraction
+    text = stage1_ocr(pdf_bytes)
     return run_pipeline_on_text(text, filename)
 
-#route for actual processing.
+
 def run_pipeline_on_text(
     text: str,
     filename: str,
     gold_spans: Optional[dict] = None,
 ) -> dict:
-    """Entry point for plain text (CUAD samples)."""
     preload_models()
     if not text or len(text.strip()) < 50:
         return {"error": "Text too short"}
-    
+
     if not is_legal_text(text):
         return {"error": "Uploaded content does not appear to be a legal document"}
 
-    # Stage 2
+
     clause_spans_full = stage2_clause_segmentation(text)
 
-    # Stage 3
+
     entities = stage3_ner(clause_spans_full)
 
-    # Stage 4
+
     summary_result = stage4_summarize(clause_spans_full, entities)
 
 
-    # Build clean clause list for frontend
     clauses_clean = {}
     for clause_type in set(list(clause_spans_full.keys()) + list(entities.keys())):
         span_data = clause_spans_full.get(clause_type, {})
@@ -453,5 +440,5 @@ def run_pipeline_on_text(
         "prompt":      summary_result["prompt"],
         "promptTokens": summary_result["prompt_tokens"],
         "pipeline":    "v2",
-        
+
     }

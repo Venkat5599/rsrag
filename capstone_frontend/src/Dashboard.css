@@ -1,4 +1,3 @@
-/* RESET */
 * {
   margin: 0;
   padding: 0;
@@ -9,8 +8,6 @@ body {
   background: #F7F6F3;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-
-/* ================= NAVBAR ================= */
 
 .nav {
   height: 64px;
@@ -36,8 +33,6 @@ body {
   color: #534AB7;
   cursor: pointer;
 }
-
-/* ================= SIDEBAR ================= */
 
 .sidebar {
   position: fixed;
@@ -70,8 +65,6 @@ body {
   cursor: pointer;
 }
 
-/* ================= SIDEBAR ================= */
-
 .history-item {
   padding: 10px 12px;
   margin-bottom: 6px;
@@ -79,17 +72,15 @@ body {
   font-size: 0.9rem;
   cursor: pointer;
   color: #444;
-  background: transparent;      /* 🔥 remove purple bg */
+  background: transparent;
   transition: 0.2s ease;
 }
 
-/* hover effect only */
 .history-item:hover {
   background: #EEEDFE;
   color: #534AB7;
 }
 
-/* NEW CHAT BUTTON (highlighted) */
 .history-item.new-chat {
   background: #534AB7;
   color: white;
@@ -102,8 +93,6 @@ body {
   background: #463ea3;
 }
 
-/* ================= CHAT ================= */
-
 .chat-area {
   max-width: 800px;
   margin: auto;
@@ -112,17 +101,15 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  background: #F7F6F3;  /* ✅ FIX */
+  background: #F7F6F3;
 }
 
-/* ROW */
 .chat-row {
   display: flex;
   width: 100%;
   margin: 8px 0;
 }
 
-/* ALIGNMENT */
 .chat-row.user {
   justify-content: flex-end;
 }
@@ -131,46 +118,40 @@ body {
   justify-content: flex-start;
 }
 
-/* BUBBLE */
 .bubble {
   max-width: 65%;
   padding: 12px 16px;
   border-radius: 18px;
   font-size: 0.95rem;
   white-space: pre-wrap;
-  word-wrap: break-word;       /* ✅ important */
-  overflow-wrap: break-word;   /* ✅ important */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
-/* USER */
 .bubble.user {
   background: #534AB7;
   color: white;
   border-bottom-right-radius: 4px;
 }
 
-/* BOT */
 .bubble.bot {
   background: white;
   border: 1px solid #ddd;
   border-bottom-left-radius: 4px;
 }
 
-/* ================= INPUT ================= */
-
 .input-wrap {
   position: fixed;
-  bottom: 0;                  /* 🔥 stick properly */
+  bottom: 0;
   width: 100%;
   display: flex;
   justify-content: center;
   padding: 12px 0;
-  background: linear-gradient(to top, #F7F6F3 80%, transparent); /* subtle blend */
+  background: linear-gradient(to top, #F7F6F3 80%, transparent);
 }
 
-/* match chat width */
 .input-box {
-  width: 800px;              /* 🔥 match chat-area max-width */
+  width: 800px;
   height: 54px;
   background: white;
   border-radius: 40px;
@@ -182,7 +163,6 @@ body {
   border: 1px solid #E4E2DC;
 }
 
-/* ICON */
 .icon-btn {
   width: 40px;
   height: 40px;
@@ -199,7 +179,6 @@ body {
   transform: scale(1.05);
 }
 
-/* DROPDOWN */
 .dropdown {
   position: relative;
 }
@@ -242,7 +221,6 @@ body {
   background: #F2F1FF;
 }
 
-/* INPUT TEXT */
 .text-input {
   flex: 1;
   border: none;
@@ -252,7 +230,6 @@ body {
   padding: 0 10px;
 }
 
-/* SEND */
 .send {
   width: 40px;
   height: 40px;
@@ -268,8 +245,6 @@ body {
 .send:hover {
   transform: scale(1.05);
 }
-
-/* ================= CLAUSE UI ================= */
 
 .summary-block {
   margin-bottom: 12px;
@@ -308,7 +283,6 @@ body {
   color: #777;
 }
 
-/* LOADING */
 .typing {
   opacity: 0.7;
   font-style: italic;
@@ -318,7 +292,7 @@ body {
   flex: 1;
   border: none;
   outline: none;
-  background: transparent;   /* 🔥 THIS removes black bg */
+  background: transparent;
   color: #534AB7;
   font-size: 1rem;
   padding: 0 10px;

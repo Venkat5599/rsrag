@@ -1,127 +1,187 @@
+# LegalEase
 
-# ⚖️ LegalEase — Contract Analysis System
+LegalEase is a contract analysis platform that extracts clauses, identifies entities, generates
+summaries, and answers grounded legal questions over processed contracts.
 
-LegalEase is an AI-powered contract analysis platform that extracts key clauses, identifies entities, and generates summaries from legal documents.
+The system ships three analysis pipelines (v1, v2, v3) and a Hybrid Retrieval-Augmented
+Intelligence layer that turns a processed contract into a searchable legal knowledge base and
+routes each user question to the cheapest answering strategy that can answer it correctly.
 
-The system supports **three pipelines (v1, v2, v3)** with increasing levels of sophistication, allowing users to compare outputs and performance.
+## Architecture
 
----
+```
+Contract PDF
+  -> OCR and text cleaning
+  -> clause segmentation
+  -> metadata and entity extraction
+  -> knowledge base builder
+  -> chunk store and metadata store
+  -> embeddings and index
 
-## 🚀 Tech Stack
+User question
+  -> query understanding and intent classification
+  -> hybrid retrieval (dense, sparse, metadata filter)
+  -> cross encoder reranking
+  -> adaptive decision engine
+  -> retriever, DeBERTa, LegalBERT, or grounded LLM
+  -> citation engine
+  -> confidence engine
+  -> faithfulness verification
+  -> final legal response
+```
 
-- **Frontend:** React (Vite)
-- **Backend:** Flask (Python)
-- **Database:** MongoDB Atlas
-- **ML Models:**
-  - DeBERTa (QA)
-  - LegalBERT (NER)
-  - Sentence Transformers (semantic scoring)
-  - OCR (Tesseract + pdf2image)
+## Repository layout
 
----
+```
+capstone_backend/
+  app.py                  Flask API (analysis routes, /ask, /ask/plan, /health)
+  v1_pipeline.py          rule-based baseline pipeline
+  v2_pipeline.py          machine learning pipeline
+  v3_pipeline.py          production pipeline (OCR, clauses, NER, summary)
+  evaluation_metrics.py   pipeline comparison harness
+  cuad_loader.py          CUAD dataset loader
+  rag/                    hybrid retrieval-augmented intelligence layer
+  tests/                  test suite for the rag layer and API routes
+capstone_frontend/        React (Vite) client
+```
 
-## 🧠 Pipelines Overview
+## The rag package
 
-### 🔹 v1 — Baseline (Rule-based)
+| Module | Responsibility |
+| --- | --- |
+| `config.py` | environment driven configuration for models, provider, thresholds |
+| `schemas.py` | typed contracts: `RetrievedChunk`, `QueryPlan`, `Citation`, `AnswerResult` |
+| `clause_taxonomy.py` | clause vocabulary, clause importance weights, entity label aliases |
+| `semantic.py` | embedding similarity with a deterministic lexical fallback |
+| `models.py` | lazy DeBERTa and LegalBERT loaders with graceful degradation |
+| `retrieval.py` | `ClauseRetriever` protocol plus an in-memory reference retriever |
+| `query_classifier.py` | seven-way intent classification (rules blended with prototypes) |
+| `router.py` | adaptive decision engine mapping intent to answering strategy |
+| `extractive_qa.py` | DeBERTa answering over retrieved evidence |
+| `entity_lookup.py` | LegalBERT entity answering over retrieved evidence |
+| `prompt_builder.py` | grounded prompt construction with numbered evidence |
+| `llm_client.py` | configurable LLM transport (OpenAI, Gemini, Ollama) |
+| `grounded_llm.py` | grounded generation with refusal on missing evidence |
+| `citation_engine.py` | clause, section, and page citations with support scores |
+| `confidence_engine.py` | six-signal confidence score and reliability band |
+| `faithfulness.py` | statement level verification of the answer against evidence |
+| `answer_engine.py` | orchestrator for the full question answering path |
+| `service.py` | process wide engine, index, and retriever injection point |
 
-- Simple keyword matching  
-- Randomized clause extraction  
-- Minimal scoring  
-- Basic summary generation  
-- Includes **basic non-legal text detection**
+## Adaptive routing
 
-**Purpose:**
-- Baseline comparison  
-- Demonstrates naive extraction  
+| Intent | Strategy |
+| --- | --- |
+| Fact lookup | DeBERTa extractive QA |
+| Clause retrieval | retriever only |
+| Entity lookup | LegalBERT entity extraction |
+| Clause comparison | grounded LLM |
+| Summarization | grounded LLM |
+| Risk explanation | grounded LLM |
+| Legal reasoning | grounded LLM |
 
----
+If the LLM provider is not configured, or a generation call fails, the router degrades to
+evidence-only or extractive answering instead of failing the request. Every response carries the
+strategy that produced it, its citations, a confidence band, and a faithfulness report.
 
-### 🔹 v2 — ML-enhanced Pipeline
+## Retriever integration contract
 
-- DeBERTa QA for clause extraction  
-- LegalBERT for NER  
-- Semantic scoring (SentenceTransformer)  
-- Clause ranking + filtering  
-- Improved summary generation  
-- Stronger non-legal text classifier  
+The answering layer depends only on the `ClauseRetriever` protocol:
 
-**Improvements over v1:**
-- Better clause accuracy  
-- Context-aware extraction  
-- Entity-level insights  
+```python
+class ClauseRetriever(Protocol):
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+        clause_filters: Optional[Sequence[str]] = None,
+        contract_id: Optional[str] = None,
+    ) -> List[RetrievedChunk]:
+        ...
+```
 
----
+A FAISS, BM25, and cross encoder implementation is injected without touching the answering layer:
 
-### 🔹 v3 — Production-grade Pipeline
+```python
+from rag import service
 
-- Chunked processing for large documents  
-- Hybrid QA + keyword fallback  
-- Multi-factor scoring:
-  - QA confidence  
-  - Semantic similarity  
-  - Keyword density  
-  - Length heuristics  
-- Clause deduplication  
-- Entity-aware refinement  
-- Hallucination-controlled summarization  
-- Strong non-legal classification  
+service.set_retriever(HybridClauseRetriever(...))
+```
 
-**Improvements over v2:**
-- Higher precision  
-- Reduced noise  
-- Better filtering of irrelevant clauses  
-- More stable summaries  
+`InMemoryClauseRetriever` is the reference implementation used until the hybrid index is wired in.
+It scores candidates with semantic similarity, lexical overlap, heading match, entity match,
+clause importance, and metadata filters, which mirrors the scoring signals of the hybrid retriever.
 
-## 🛠️ Setup Instructions
+## API
 
-### 1️⃣ Clone the Repository
+| Method | Route | Purpose |
+| --- | --- | --- |
+| POST | `/analyze-text` | run a pipeline over pasted text and index the result |
+| POST | `/analyze-pdf` | run a pipeline over an uploaded PDF and index the result |
+| POST | `/ask` | answer a question over an indexed contract |
+| POST | `/ask/plan` | return the routing decision without answering |
+| GET | `/results` | list processed documents |
+| GET | `/results/<docId>` | fetch one processed document |
+| GET | `/health` | service and provider status |
 
-    git clone <https:github.com/vanshikatyagii/capstone.git>
-    cd capstone
-### 🧪 Backend Setup (Flask)
+Request:
 
-### 📌 Navigate to backend
+```json
+{ "question": "What is the notice period for termination?", "docId": "6f1c2a04", "topK": 5 }
+```
 
-    cd capstone_backend
+Response:
 
-### 📌 Create virtual environment:
+```json
+{
+  "answer": "Either party may terminate for convenience upon thirty days prior written notice.",
+  "plan": { "intent": "fact_lookup", "strategy": "deberta_extractive_qa" },
+  "citations": [{ "clause_type": "Termination for Convenience", "section": "Clause 8.2", "page": 12 }],
+  "confidence": { "score": 0.71, "band": "high" },
+  "faithfulness": { "score": 0.83, "supported": true },
+  "warnings": []
+}
+```
 
-    python -m venv venv
+## Configuration
 
-    source venv/bin/activate   (Mac)
+Copy `capstone_backend/.env.example` to `.env` and set the values you need. All keys have safe
+defaults, and the service runs without an LLM provider by degrading to extractive answering.
 
-    venv\Scripts\activate      (Windows)
+`MONGO_URI` is required for persistence and defaults to a local MongoDB instance. Credentials must
+never be committed to the repository.
 
-### 📌 Install dependencies
+## Setup
 
-    pip install -r requirements.txt
+Backend:
 
-### 📌 Run Flask server
+```
+cd capstone_backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+```
 
-    python app.py
+The API serves on http://localhost:5001.
 
-#### Server runs on: http://localhost:5001
+Frontend:
 
+```
+cd capstone_frontend
+npm install
+npm run dev
+```
 
-## 💻 Frontend Setup (React + Vite)
+The client serves on http://localhost:5173.
 
-### 📌 Navigate to frontend
-    cd capstone_frontend
+## Tests
 
-### 📌 Install dependencies
-    npm install
-### 📌 Run frontend
-    npm run dev
+```
+cd capstone_backend
+python -m pytest
+```
 
-#### Frontend runs on: http://localhost:5173
-# 🔄 How It Works
-#### User inputs: Text OR PDF
-
-#### Pipeline processes:
-
-    1. Clause extraction
-    2. Entity recognition
-    3. Summary generation
-    4. Results stored in MongoDB
-    5. Response returned to frontend
-
+The suite covers intent classification, routing and degradation, retrieval ranking, prompt
+construction, citation binding, faithfulness verification, confidence scoring, the orchestrator,
+and the API routes. Tests run without model downloads and without network access.

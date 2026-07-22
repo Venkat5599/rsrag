@@ -25,11 +25,11 @@ export default function LandingPage() {
 
   return (
     <div className="landing-container">
-      {/* HERO */}
+
       <div className="hero">
         <h1 className="logo">LegalEase</h1>
       </div>
-      {/* STEPS */}
+
       <div className="steps-wrapper">
         <div className="steps-grid">
           {steps.map((step, index) => (

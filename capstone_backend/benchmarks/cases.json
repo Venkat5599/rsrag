@@ -1,0 +1,67 @@
+[
+  {
+    "question": "What is the notice period for termination?",
+    "contract_id": "msa-001",
+    "expected_intent": "fact_lookup",
+    "expected_strategy": "deberta_extractive_qa",
+    "expected_clause_types": ["Termination for Convenience"],
+    "expected_answer_contains": ["thirty"]
+  },
+  {
+    "question": "Who are the parties to this agreement?",
+    "contract_id": "msa-001",
+    "expected_intent": "entity_lookup",
+    "expected_strategy": "legalbert_entity_extraction",
+    "expected_answer_contains": ["Acme Corporation", "Globex Limited"]
+  },
+  {
+    "question": "Show me the confidentiality clause",
+    "contract_id": "msa-001",
+    "expected_intent": "clause_retrieval",
+    "expected_strategy": "retriever_only",
+    "expected_answer_contains": ["Confidential Information"]
+  },
+  {
+    "question": "Retrieve the governing law section",
+    "contract_id": "msa-001",
+    "expected_intent": "clause_retrieval",
+    "expected_answer_contains": ["Delaware"]
+  },
+  {
+    "question": "What law governs this agreement?",
+    "contract_id": "msa-001",
+    "expected_intent": "fact_lookup",
+    "expected_answer_contains": ["Delaware"]
+  },
+  {
+    "question": "Summarise this agreement",
+    "contract_id": "msa-001",
+    "expected_intent": "summarization"
+  },
+  {
+    "question": "What are the risks in the liability clause?",
+    "contract_id": "msa-001",
+    "expected_intent": "risk_explanation"
+  },
+  {
+    "question": "Compare the payment terms and the termination clause",
+    "contract_id": "msa-001",
+    "expected_intent": "clause_comparison"
+  },
+  {
+    "question": "What happens if the customer fails to pay an invoice?",
+    "contract_id": "msa-001",
+    "expected_intent": "legal_reasoning"
+  },
+  {
+    "question": "How many days does the customer have to pay an invoice?",
+    "contract_id": "msa-001",
+    "expected_intent": "fact_lookup",
+    "expected_answer_contains": ["forty-five"]
+  },
+  {
+    "question": "What is the delivery schedule for hardware spares?",
+    "contract_id": "unknown-contract",
+    "expect_refusal": true
+  }
+]

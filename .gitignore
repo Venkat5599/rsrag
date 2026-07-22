@@ -1,24 +1,21 @@
-# Python
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
 
-# ML / HuggingFace
 .hf-cache/
 *.bin
 *.pt
 
-# Dataset
 CUAD_v1/
+CUAD_v1
 
-# Node
 node_modules/
 
-# Env
 .env
 
-# Build
 dist/
 
-CUAD_v1
 *.pdf
+benchmarks/report.json

@@ -6,9 +6,8 @@ function App() {
     <Router>
       <Routes>
 
-        {/* Landing Page */}
         <Route path="/" element={<LandingPage />} />
-        {/* Dashboard */}
+
         <Route path="/dashboard" element={<Dashboard />} />
 
       </Routes>

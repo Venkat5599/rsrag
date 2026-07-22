@@ -1,9 +1,3 @@
-"""
-CUAD v1 Loader (LOCAL VERSION)
-==============================
-Loads CUAD dataset from local JSON instead of HuggingFace.
-"""
-
 import logging
 import json
 from functools import lru_cache
@@ -11,10 +5,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Path to local dataset
+
 DATA_PATH = Path(r"/Users/vanshikatyagi/cspstone/CUAD_v1/CUAD_v1.json")
 
-# Map CUAD question fragments → our clause type names
+
 QUESTION_MAP = {
     "what law governs":                          "Governing Law",
     "who are the parties":                       "Parties",
@@ -59,7 +53,6 @@ QUESTION_MAP = {
 }
 
 
-# ✅ CHANGED: Load from local JSON instead of HuggingFace
 @lru_cache(maxsize=1)
 def _load_dataset():
     logger.info("Loading CUAD v1 dataset from local JSON...")
@@ -67,11 +60,11 @@ def _load_dataset():
         logger.error(f"Dataset not found at {DATA_PATH}")
         return []
 
-    
+
     with open(DATA_PATH, "r", encoding="utf-8") as f:
         raw = json.load(f)
 
-# 🔥 FIX: handle both formats
+
     if isinstance(raw, dict) and "data" in raw:
         data = raw["data"]
     else:
@@ -83,7 +76,6 @@ def _load_dataset():
     return data
 
 
-# ✅ CHANGED: Adapt to official CUAD JSON structure
 def _group_by_contract(data) -> list:
     contracts = []
 
@@ -105,7 +97,6 @@ def _group_by_contract(data) -> list:
     return contracts
 
 
-# ❌ UNCHANGED
 def _extract_gold_spans(qas: list) -> dict:
     gold = {}
     for qa in qas:
@@ -128,7 +119,6 @@ def _extract_gold_spans(qas: list) -> dict:
     return gold
 
 
-# ❌ UNCHANGED
 def list_cuad_samples(n: int = 20) -> list:
     try:
         data = _load_dataset()
@@ -144,7 +134,6 @@ def list_cuad_samples(n: int = 20) -> list:
         return []
 
 
-# ❌ UNCHANGED
 def load_cuad_sample(index: int = 0) -> dict:
     try:
         data = _load_dataset()

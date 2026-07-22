@@ -15,7 +15,6 @@ export default function Dashboard() {
   const fileRef = useRef(null);
   const chatEndRef = useRef(null);
 
-  // ================= FETCH HISTORY =================
   const fetchHistory = async () => {
     try {
       const res = await fetch("http://localhost:5001/results");
@@ -30,12 +29,10 @@ export default function Dashboard() {
     fetchHistory();
   }, []);
 
-  // ================= AUTO SCROLL =================
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // ================= LOAD HISTORY =================
   const loadHistoryItem = async (docId) => {
     try {
       const res = await fetch(`http://localhost:5001/results/${docId}`);
@@ -57,7 +54,6 @@ export default function Dashboard() {
     }
   };
 
-  // ================= PDF =================
   const handlePDFUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -84,7 +80,7 @@ export default function Dashboard() {
       if (data.error) {
         setMessages((prev) => [
           ...prev,
-          { type: "bot", text: "❌ " + data.error }
+          { type: "bot", text: "Error: " + data.error }
         ]);
       } else {
         setMessages((prev) => [
@@ -103,14 +99,13 @@ export default function Dashboard() {
     } catch {
       setMessages((prev) => [
         ...prev,
-        { type: "bot", text: "❌ PDF failed" }
+        { type: "bot", text: "PDF analysis failed" }
       ]);
     } finally {
       setLoading(false);
     }
   };
 
-  // ================= TEXT =================
   const handleAnalyze = async () => {
     if (!text.trim()) return;
 
@@ -136,7 +131,7 @@ export default function Dashboard() {
       if (data.error) {
         setMessages((prev) => [
           ...prev,
-          { type: "bot", text: "❌ " + data.error }
+          { type: "bot", text: "Error: " + data.error }
         ]);
       } else {
         setMessages((prev) => [
@@ -155,7 +150,7 @@ export default function Dashboard() {
     } catch {
       setMessages((prev) => [
         ...prev,
-        { type: "bot", text: "❌ Text failed" }
+        { type: "bot", text: "Text analysis failed" }
       ]);
     } finally {
       setLoading(false);
@@ -165,11 +160,10 @@ export default function Dashboard() {
   return (
     <div className="dashboard">
 
-      {/* SIDEBAR */}
       <div className={`sidebar ${sidebar ? "show" : ""}`}>
         <div className="sidebar-header">
           <span>History</span>
-          <span className="close" onClick={() => setSidebar(false)}>✕</span>
+          <span className="close" onClick={() => setSidebar(false)}>×</span>
         </div>
 
         <div
@@ -193,22 +187,18 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* NAVBAR */}
       <div className="nav">
         <FaBars className="menu" onClick={() => setSidebar(true)} />
         <span className="nav-logo">LegalEase</span>
       </div>
 
-      {/* CHAT */}
       <div className="chat-area">
         {messages.map((msg, i) => (
           <div key={i} className={`chat-row ${msg.type}`}>
             <div className={`bubble ${msg.type}`}>
 
-              {/* USER */}
               {msg.type === "user" && msg.text}
 
-              {/* BOT */}
               {msg.type === "bot" && (
                 <>
                   {msg.text && <div>{msg.text}</div>}
@@ -253,7 +243,6 @@ export default function Dashboard() {
         <div ref={chatEndRef} />
       </div>
 
-      {/* INPUT */}
       <div className="input-wrap">
         <div className="input-box">
 
