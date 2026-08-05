@@ -3,7 +3,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
-from .answer_engine import NO_EVIDENCE_ANSWER, AnswerEngine
+from venkata_answering.answer_engine import NO_EVIDENCE_ANSWER, AnswerEngine
+
 from .schemas import AnswerStrategy, QueryIntent
 
 

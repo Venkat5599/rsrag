@@ -1,15 +1,20 @@
+import logging
 import threading
-from typing import Any, Dict, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence
 
-from .answer_engine import AnswerEngine
 from .config import RagConfig, load_config
-from .retrieval import ClauseRetriever, InMemoryClauseRetriever, chunks_from_clause_map, chunks_from_text
+from .retrieval import ClauseRetriever, InMemoryClauseRetriever, chunks_from_clause_map
 from .schemas import RetrievedChunk
+
+if TYPE_CHECKING:  # pragma: no cover - typing only; the runtime import stays lazy
+    from venkata_answering.answer_engine import AnswerEngine
+
+logger = logging.getLogger(__name__)
 
 _lock = threading.RLock()
 _config: Optional[RagConfig] = None
 _retriever: Optional[ClauseRetriever] = None
-_engine: Optional[AnswerEngine] = None
+_engine: Optional["AnswerEngine"] = None
 _indexed_contracts = set()
 
 
@@ -22,14 +27,37 @@ def get_config() -> RagConfig:
         return _config
 
 
+def _build_retriever(config: RagConfig) -> ClauseRetriever:
+    """Select the retrieval backend.
+
+    ``hybrid`` (default) is Kiran's clause-aware knowledge base: metadata filtering,
+    dense plus BM25 candidate generation, and cross-encoder reranking. ``memory`` is
+    the original single-pass lexical retriever, kept as the benchmark baseline.
+    """
+
+    if config.retriever_backend == "memory":
+        return InMemoryClauseRetriever(embedding_model=config.embedding_model)
+
+    try:
+        from kiran_retrieval.knowledge_base import build_knowledge_base
+
+        return build_knowledge_base(config)
+    except Exception as error:
+        logger.error(
+            "Hybrid knowledge base unavailable, falling back to the baseline retriever: %s",
+            error,
+        )
+        return InMemoryClauseRetriever(embedding_model=config.embedding_model)
+
+
 def get_retriever() -> ClauseRetriever:
     global _retriever
 
-    embedding_model = get_config().embedding_model
+    config = get_config()
 
     with _lock:
         if _retriever is None:
-            _retriever = InMemoryClauseRetriever(embedding_model=embedding_model)
+            _retriever = _build_retriever(config)
         return _retriever
 
 
@@ -41,8 +69,10 @@ def set_retriever(retriever: ClauseRetriever) -> None:
         _engine = None
 
 
-def get_engine() -> AnswerEngine:
+def get_engine() -> "AnswerEngine":
     global _engine
+
+    from venkata_answering.answer_engine import AnswerEngine
 
     retriever = get_retriever()
     config = get_config()
@@ -68,6 +98,23 @@ def index_chunks(contract_id: str, chunks: Sequence[RetrievedChunk]) -> int:
     return len(chunks)
 
 
+def _chunks_from_free_text(text: str, contract_id: str, filename: str) -> Sequence[RetrievedChunk]:
+    """Clause-aware chunking, with the fixed-window builder as the fallback."""
+
+    try:
+        from kiran_retrieval.clause_chunker import segment_clauses
+
+        chunks = segment_clauses(text, contract_id, filename)
+        if chunks:
+            return chunks
+    except Exception as error:
+        logger.warning("Clause chunking unavailable, using fixed windows: %s", error)
+
+    from .retrieval import chunks_from_text
+
+    return chunks_from_text(text, contract_id, filename)
+
+
 def index_document(document: Dict[str, Any]) -> int:
     contract_id = str(document.get("docId") or document.get("id") or "").strip()
 
@@ -78,7 +125,9 @@ def index_document(document: Dict[str, Any]) -> int:
     chunks = chunks_from_clause_map(document.get("clauses") or {}, contract_id, filename)
 
     if not chunks:
-        chunks = chunks_from_text(str(document.get("summary", "")), contract_id, filename)
+        chunks = _chunks_from_free_text(
+            str(document.get("summary", "")), contract_id, filename
+        )
 
     return index_chunks(contract_id, chunks)
 

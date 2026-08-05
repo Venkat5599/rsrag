@@ -20,5 +20,11 @@ scikit-learn==1.5.0
 sentence-transformers==2.7.0
 sentencepiece==0.2.0
 
+# Vector database for the clause knowledge base (spec section 5).
+# faiss-cpu backs kiran_retrieval.vector_index. Without it that module falls back to
+# a pure-Python inner-product scan behind the same API: correct, but O(n) per query,
+# so install it for anything past a demo corpus.
+faiss-cpu==1.8.0
+
 python-dotenv==1.0.1
 pytest==8.3.2

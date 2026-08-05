@@ -9,6 +9,13 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* index.css sets #root { text-align: center } from the Vite template. That is
+   right for the landing page and wrong for every block of contract text here,
+   so the dashboard resets it rather than editing the shared rule. */
+.dashboard {
+  text-align: left;
+}
+
 .nav {
   height: 64px;
   display: flex;
@@ -46,6 +53,9 @@ body {
   padding: 20px;
   transition: 0.3s ease;
   z-index: 10;
+  /* Without this a long filename overflows the closed sidebar and shows as a
+     stray sliver of text against the left edge of the page. */
+  overflow: hidden auto;
 }
 
 .sidebar.show {
@@ -74,6 +84,9 @@ body {
   color: #444;
   background: transparent;
   transition: 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .history-item:hover {
@@ -93,15 +106,67 @@ body {
   background: #463ea3;
 }
 
+.history-item.active {
+  background: #EEEDFE;
+  color: #534AB7;
+  font-weight: 600;
+}
+
+.health-panel {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid #E4E2DC;
+  font-size: 0.78rem;
+  color: #6b6b68;
+}
+
+.health-title {
+  font-weight: 600;
+  color: #534AB7;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+}
+
+.health-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.health-row span:last-child {
+  color: #444;
+  text-align: right;
+}
+
 .chat-area {
   max-width: 800px;
   margin: auto;
   padding: 20px;
-  height: calc(100vh - 140px);
+  height: calc(100vh - 176px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   background: #F7F6F3;
+}
+
+.empty-state {
+  margin: auto;
+  max-width: 460px;
+  text-align: center;
+  color: #6b6b68;
+}
+
+.empty-title {
+  color: #534AB7;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.empty-body {
+  font-size: 0.9rem;
+  line-height: 1.55;
 }
 
 .chat-row {
@@ -148,6 +213,90 @@ body {
   justify-content: center;
   padding: 12px 0;
   background: linear-gradient(to top, #F7F6F3 80%, transparent);
+}
+
+.input-column {
+  width: 800px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.context-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #6b6b68;
+  padding: 0 6px;
+}
+
+.context-label {
+  color: #8a8a86;
+}
+
+.context-file {
+  color: #534AB7;
+  font-weight: 600;
+}
+
+.context-clear {
+  margin-left: auto;
+  color: #8a8a86;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.context-clear:hover {
+  color: #534AB7;
+}
+
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 6px;
+  font-size: 0.82rem;
+}
+
+.mode {
+  color: #8a8a86;
+  cursor: pointer;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+}
+
+.mode.on {
+  color: #534AB7;
+  font-weight: 600;
+  border-bottom-color: #534AB7;
+}
+
+.mode.locked {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.mode-hint {
+  margin-left: auto;
+  color: #a3a39f;
+}
+
+.send.disabled {
+  background: #C9C6E8;
+  cursor: not-allowed;
+}
+
+.send.disabled:hover {
+  transform: none;
+}
+
+.pipeline.static {
+  cursor: default;
+}
+
+.pipeline.static:hover {
+  background: #EEEDFE;
 }
 
 .input-box {
@@ -283,9 +432,276 @@ body {
   color: #777;
 }
 
+.clause-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: #8a8a86;
+}
+
 .typing {
   opacity: 0.7;
   font-style: italic;
+}
+
+/* ---- Grounded answer card ------------------------------------------------ */
+
+/* An answer carries evidence, verification and retrieval detail, so it needs
+   more width than a chat bubble. */
+.bubble.answer {
+  max-width: 92%;
+  width: 92%;
+}
+
+.answer-text {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #2f2f2d;
+  margin-bottom: 12px;
+}
+
+.answer-meta,
+.routing-row,
+.verification-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.badge.neutral {
+  background: #EEEDFE;
+  color: #534AB7;
+  border-color: #DEDBFA;
+}
+
+.badge.ok {
+  background: #E8F3EC;
+  color: #2F6B45;
+  border-color: #D2E7DA;
+}
+
+.badge.warn {
+  background: #FBEEE6;
+  color: #9A5324;
+  border-color: #F1DCCB;
+}
+
+.badge.band-high {
+  background: #E8F3EC;
+  color: #2F6B45;
+  border-color: #D2E7DA;
+}
+
+.badge.band-medium {
+  background: #FBF3E0;
+  color: #85631B;
+  border-color: #EFE2C2;
+}
+
+.badge.band-low {
+  background: #FBEEE6;
+  color: #9A5324;
+  border-color: #F1DCCB;
+}
+
+.routing-reason {
+  font-size: 0.78rem;
+  color: #8a8a86;
+}
+
+.section-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #8a8a86;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 14px 0 8px;
+}
+
+.citation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The accent edge marks a quote as verbatim contract text rather than
+   generated prose, which is the distinction the whole system exists to keep. */
+.citation {
+  background: #F7F6F3;
+  border: 1px solid #E4E2DC;
+  border-left: 3px solid #534AB7;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.citation-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.citation-where {
+  font-weight: 600;
+  color: #534AB7;
+  font-size: 0.85rem;
+}
+
+.citation-type {
+  font-size: 0.76rem;
+  color: #8a8a86;
+}
+
+.citation-quote {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #444;
+}
+
+.no-evidence {
+  font-size: 0.85rem;
+  color: #8a8a86;
+  font-style: italic;
+}
+
+.warning-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.warning {
+  font-size: 0.78rem;
+  color: #9A5324;
+}
+
+.inspect-btn {
+  margin-top: 14px;
+  background: transparent;
+  border: 1px solid #DEDBFA;
+  color: #534AB7;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.inspect-btn:hover {
+  background: #F2F1FF;
+}
+
+/* ---- Retrieval inspector ------------------------------------------------- */
+
+.retrieval-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.retrieval-chunk {
+  background: #F7F6F3;
+  border: 1px solid #E4E2DC;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.retrieval-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.retrieval-rank {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  background: #534AB7;
+  color: white;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.retrieval-title {
+  font-weight: 600;
+  color: #534AB7;
+  font-size: 0.85rem;
+}
+
+.retrieval-where {
+  font-size: 0.76rem;
+  color: #8a8a86;
+}
+
+.retrieval-score {
+  margin-left: auto;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #444;
+}
+
+.signal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+}
+
+.signal-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #6b6b68;
+  margin-bottom: 3px;
+}
+
+.signal-track {
+  height: 4px;
+  background: #E4E2DC;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.signal-fill {
+  height: 100%;
+  background: #534AB7;
+  border-radius: 2px;
+  transition: width 0.25s ease;
+}
+
+@media (max-width: 860px) {
+  .input-column,
+  .input-box {
+    width: 94vw;
+  }
+
+  .bubble.answer {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .signal-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .text-input {

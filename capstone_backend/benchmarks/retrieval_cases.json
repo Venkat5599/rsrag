@@ -1,0 +1,77 @@
+[
+  {
+    "question": "What is the notice period for termination?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Termination for Convenience"]
+  },
+  {
+    "question": "Who are the parties to this agreement?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Parties"]
+  },
+  {
+    "question": "Show me the confidentiality clause",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Confidentiality"]
+  },
+  {
+    "question": "Retrieve the governing law section",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Governing Law"]
+  },
+  {
+    "question": "What law governs this agreement?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Governing Law"]
+  },
+  {
+    "question": "What are the risks in the liability clause?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Limitation of Liability"]
+  },
+  {
+    "question": "How many days does the customer have to pay an invoice?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Payment Terms"]
+  },
+  {
+    "question": "What happens if the customer fails to pay an invoice?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Payment Terms"]
+  },
+  {
+    "question": "Can either party walk away from the contract early?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Termination for Convenience"]
+  },
+  {
+    "question": "Is there a cap on how much either side can be made to pay?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Limitation of Liability"]
+  },
+  {
+    "question": "What restrictions apply to sharing proprietary information?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Confidentiality"]
+  },
+  {
+    "question": "Which companies signed this agreement?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Parties"]
+  },
+  {
+    "question": "When must undisputed invoices be settled?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Payment Terms"]
+  },
+  {
+    "question": "Which state law applies to disputes under this contract?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Governing Law"]
+  },
+  {
+    "question": "How much prior written notice is required to end the agreement?",
+    "contract_id": "msa-001",
+    "expected_clause_types": ["Termination for Convenience"]
+  }
+]

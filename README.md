@@ -34,39 +34,47 @@ User question
 
 ```
 capstone_backend/
-  app.py                  Flask API (analysis routes, /ask, /ask/plan, /health)
+  app.py                  Flask API (analysis routes, /retrieve, /ask, /ask/plan, /health)
   v1_pipeline.py          rule-based baseline pipeline
   v2_pipeline.py          machine learning pipeline
   v3_pipeline.py          production pipeline (OCR, clauses, NER, summary)
   evaluation_metrics.py   pipeline comparison harness
   cuad_loader.py          CUAD dataset loader
-  rag/                    hybrid retrieval-augmented intelligence layer
-  tests/                  test suite for the rag layer and API routes
+  kiran_retrieval/        OWNER: Kiran   knowledge base and hybrid retrieval
+  venkata_answering/      OWNER: Venkata query understanding and grounded answering
+  rag/                    shared core: schemas, config, taxonomy, protocol, wiring
+  tests/                  integration tests (service, API routes, evaluation)
+  INTEGRATION.md          how the two halves connect, benchmarks, definition of done
 capstone_frontend/        React (Vite) client
 ```
 
-## The rag package
+## Ownership
+
+Implementation is split per section 15 of `LegalEase_v3_Hybrid_RAG_Integration.pdf`,
+one directory per owner, so every module has exactly one owner at any point.
+
+| Directory | Owner | Scope |
+| --- | --- | --- |
+| `kiran_retrieval/` | Kiran | clause chunking, metadata extraction, embeddings, FAISS, BM25, hybrid retrieval, cross encoder reranker |
+| `venkata_answering/` | Venkata | query classifier, DeBERTa, LegalBERT, grounded LLM, prompt builder, citation engine, confidence engine, faithfulness verification |
+| `rag/` | shared | data contracts and the seam between the two |
+
+Each package has its own README and its own test suite that passes on its own.
+`capstone_backend/INTEGRATION.md` is the joint document. The split divides effort
+rather than fixing assignments: the boundary is a protocol, so responsibilities can
+be exchanged without touching the other half.
+
+## The shared core
 
 | Module | Responsibility |
 | --- | --- |
 | `config.py` | environment driven configuration for models, provider, thresholds |
 | `schemas.py` | typed contracts: `RetrievedChunk`, `QueryPlan`, `Citation`, `AnswerResult` |
 | `clause_taxonomy.py` | clause vocabulary, clause importance weights, entity label aliases |
-| `semantic.py` | embedding similarity with a deterministic lexical fallback |
-| `models.py` | lazy DeBERTa and LegalBERT loaders with graceful degradation |
-| `retrieval.py` | `ClauseRetriever` protocol plus an in-memory reference retriever |
-| `query_classifier.py` | seven-way intent classification (rules blended with prototypes) |
-| `router.py` | adaptive decision engine mapping intent to answering strategy |
-| `extractive_qa.py` | DeBERTa answering over retrieved evidence |
-| `entity_lookup.py` | LegalBERT entity answering over retrieved evidence |
-| `prompt_builder.py` | grounded prompt construction with numbered evidence |
-| `llm_client.py` | configurable LLM transport (OpenAI, Gemini, Ollama) |
-| `grounded_llm.py` | grounded generation with refusal on missing evidence |
-| `citation_engine.py` | clause, section, and page citations with support scores |
-| `confidence_engine.py` | six-signal confidence score and reliability band |
-| `faithfulness.py` | statement level verification of the answer against evidence |
-| `answer_engine.py` | orchestrator for the full question answering path |
-| `service.py` | process wide engine, index, and retriever injection point |
+| `semantic.py` | tokenisation, sentence splitting, similarity with a lexical fallback |
+| `retrieval.py` | `ClauseRetriever` protocol, chunk builders, baseline retriever |
+| `service.py` | process wide engine, index, and retriever selection |
+| `evaluation.py` | end-to-end harness exercising both halves together |
 
 ## Adaptive routing
 
@@ -100,17 +108,20 @@ class ClauseRetriever(Protocol):
         ...
 ```
 
-A FAISS, BM25, and cross encoder implementation is injected without touching the answering layer:
+`kiran_retrieval.KnowledgeBase` implements that protocol with FAISS, BM25 and a cross encoder, and
+is selected by default. `rag/service.py` picks the backend from `LEGALEASE_RETRIEVER`, or you can
+inject one directly:
 
 ```python
+from kiran_retrieval import build_knowledge_base
 from rag import service
 
-service.set_retriever(HybridClauseRetriever(...))
+service.set_retriever(build_knowledge_base())
 ```
 
-`InMemoryClauseRetriever` is the reference implementation used until the hybrid index is wired in.
-It scores candidates with semantic similarity, lexical overlap, heading match, entity match,
-clause importance, and metadata filters, which mirrors the scoring signals of the hybrid retriever.
+`InMemoryClauseRetriever` remains as the pre-hybrid baseline, selected with
+`LEGALEASE_RETRIEVER=memory`. It is what `kiran_retrieval/retrieval_benchmark.py` measures the
+hybrid pipeline against, so the improvement is a number rather than a claim.
 
 ## API
 
@@ -118,6 +129,7 @@ clause importance, and metadata filters, which mirrors the scoring signals of th
 | --- | --- | --- |
 | POST | `/analyze-text` | run a pipeline over pasted text and index the result |
 | POST | `/analyze-pdf` | run a pipeline over an uploaded PDF and index the result |
+| POST | `/retrieve` | hybrid retrieval only, with per-signal scores and no answering model |
 | POST | `/ask` | answer a question over an indexed contract |
 | POST | `/ask/plan` | return the routing decision without answering |
 | GET | `/results` | list processed documents |
@@ -179,9 +191,23 @@ The client serves on http://localhost:5173.
 
 ```
 cd capstone_backend
-python -m pytest
+python -m pytest -q                            # everything
+python -m pytest kiran_retrieval/tests -q      # Kiran's suite alone
+python -m pytest venkata_answering/tests -q    # Venkata's suite alone
 ```
 
-The suite covers intent classification, routing and degradation, retrieval ranking, prompt
-construction, citation binding, faithfulness verification, confidence scoring, the orchestrator,
-and the API routes. Tests run without model downloads and without network access.
+The suite covers clause chunking, metadata filtering, embeddings, the vector and BM25 indexes,
+cross encoder reranking, hybrid ranking, intent classification, routing and degradation, prompt
+construction, citation binding, grounding validation, faithfulness verification, confidence
+scoring, the response contract, the orchestrator, and the API routes. Tests run without model
+downloads and without network access.
+
+Each owner suite passes independently, which is what makes the split real rather than cosmetic.
+
+Benchmarks:
+
+```
+python -m kiran_retrieval.retrieval_benchmark   # recall@k, precision@1, MRR
+python -m venkata_answering.routing_benchmark   # intent and strategy accuracy
+python benchmark_answering.py                   # end to end
+```

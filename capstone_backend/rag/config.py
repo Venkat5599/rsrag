@@ -26,7 +26,12 @@ def _env_int(name: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class RagConfig:
+    retriever_backend: str
     embedding_model: str
+    reranker_model: str
+    rerank_top_k: int
+    bm25_k1: float
+    bm25_b: float
     qa_model: str
     ner_model: str
     llm_provider: str
@@ -51,12 +56,24 @@ DEFAULT_BASE_URLS = {
 }
 
 
+RETRIEVER_BACKENDS = {"hybrid", "memory"}
+
+
 def load_config() -> RagConfig:
     provider = _env_str("LEGALEASE_LLM_PROVIDER", "none").lower()
     base_url = _env_str("LEGALEASE_LLM_BASE_URL", DEFAULT_BASE_URLS.get(provider, ""))
+    backend = _env_str("LEGALEASE_RETRIEVER", "hybrid").lower()
+
+    if backend not in RETRIEVER_BACKENDS:
+        backend = "hybrid"
 
     return RagConfig(
+        retriever_backend=backend,
         embedding_model=_env_str("LEGALEASE_EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5"),
+        reranker_model=_env_str("LEGALEASE_RERANKER_MODEL", "BAAI/bge-reranker-large"),
+        rerank_top_k=_env_int("LEGALEASE_RERANK_TOP_K", 5),
+        bm25_k1=_env_float("LEGALEASE_BM25_K1", 1.5),
+        bm25_b=_env_float("LEGALEASE_BM25_B", 0.75),
         qa_model=_env_str("LEGALEASE_QA_MODEL", "deepset/deberta-v3-base-squad2"),
         ner_model=_env_str("LEGALEASE_NER_MODEL", "nlpaueb/legal-bert-base-uncased"),
         llm_provider=provider,

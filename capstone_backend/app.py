@@ -9,6 +9,8 @@ from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
 from rag import service
+from rag.clause_taxonomy import match_clause_types
+from venkata_answering.answer_contract import build_response
 from v1_pipeline import run_pipeline as run_v1_pdf
 from v1_pipeline import run_pipeline_on_text as run_v1
 from v2_pipeline import run_pipeline as run_v2_pdf
@@ -157,11 +159,65 @@ def ask():
             return jsonify({"error": "Document not found"}), 404
 
         result = service.get_engine().answer(question, contract_id=doc_id, top_k=top_k)
+        payload = result.to_dict()
 
-        return jsonify(result.to_dict())
+        # Spec section 12: answer, confidence, evidence, clause numbers, page
+        # numbers. build_response validates that they are all actually present.
+        # strict=False so a contract failure is reported in the payload rather than
+        # turning into a 500 - the caller still gets the answer, plus the warning
+        # that it did not meet the grounding contract.
+        payload["contract"] = build_response(result, strict=False).to_dict()
+
+        return jsonify(payload)
 
     except Exception as error:
         logger.exception("Question answering failed")
+        return jsonify({"error": str(error)}), 500
+
+
+@app.route("/retrieve", methods=["POST"])
+def retrieve():
+    """Hybrid retrieval on its own, with no answering model involved.
+
+    This exists so retrieval can be inspected and benchmarked directly: each chunk
+    comes back with its dense, sparse and cross-encoder scores plus the full signal
+    breakdown, which is how a ranking is explained or a regression is diagnosed.
+    """
+
+    try:
+        payload = request.json or {}
+        question = (payload.get("question") or "").strip()
+        doc_id = (payload.get("docId") or "").strip() or None
+        top_k = payload.get("topK") or service.get_config().top_k_context
+        clause_filters = payload.get("clauseFilters")
+
+        if not question:
+            return jsonify({"error": "No question provided"}), 400
+
+        if doc_id and not _ensure_indexed(doc_id):
+            return jsonify({"error": "Document not found"}), 404
+
+        if clause_filters is None:
+            clause_filters = match_clause_types(question)
+
+        chunks = service.get_retriever().retrieve(
+            question,
+            top_k=int(top_k),
+            clause_filters=clause_filters,
+            contract_id=doc_id,
+        )
+
+        return jsonify(
+            {
+                "question": question,
+                "clause_filters": clause_filters,
+                "count": len(chunks),
+                "chunks": [chunk.to_dict() for chunk in chunks],
+            }
+        )
+
+    except Exception as error:
+        logger.exception("Retrieval failed")
         return jsonify({"error": str(error)}), 500
 
 
@@ -211,15 +267,25 @@ def get_one(doc_id):
 @app.route("/health", methods=["GET"])
 def health():
     config = service.get_config()
+    retriever = service.get_retriever()
 
-    return jsonify(
-        {
-            "status": "ok",
-            "llm_provider": config.llm_provider,
-            "llm_configured": service.get_engine().llm_available(),
-            "top_k": config.top_k_context,
-        }
-    )
+    payload = {
+        "status": "ok",
+        "llm_provider": config.llm_provider,
+        "llm_configured": service.get_engine().llm_available(),
+        "top_k": config.top_k_context,
+        "retriever": config.retriever_backend,
+        "embedding_model": config.embedding_model,
+        "reranker_model": config.reranker_model,
+    }
+
+    # The hybrid knowledge base reports which backends actually loaded, so a
+    # deployment can tell FAISS-and-bge from the offline fallbacks at a glance
+    # instead of discovering it from retrieval quality.
+    if hasattr(retriever, "describe"):
+        payload["retrieval"] = retriever.describe()
+
+    return jsonify(payload)
 
 
 if __name__ == "__main__":
