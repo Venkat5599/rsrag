@@ -39,15 +39,26 @@ class RetrievedChunk:
     section: str = ""
     page: int = 0
     risk: str = ""
+    risk_score: float = 0.0
+    risk_factors: List[str] = field(default_factory=list)
     entities: List[Entity] = field(default_factory=list)
+    embedding: List[float] = field(default_factory=list)
     dense_score: float = 0.0
     sparse_score: float = 0.0
     rerank_score: float = 0.0
     retrieval_score: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
+    def to_dict(self, include_embedding: bool = False) -> Dict[str, Any]:
+        """Serialise the chunk (spec section 7 schema).
+
+        The embedding is part of the schema but is omitted by default: 1024 floats
+        per chunk would dwarf the clause text in every API response. ``embedding_dim``
+        is always reported so a caller can see the vector exists and how wide it is;
+        ``include_embedding=True`` returns the vector itself.
+        """
+
+        payload: Dict[str, Any] = {
             "chunk_id": self.chunk_id,
             "contract_id": self.contract_id,
             "text": self.text,
@@ -55,13 +66,21 @@ class RetrievedChunk:
             "section": self.section,
             "page": self.page,
             "risk": self.risk,
+            "risk_score": round(self.risk_score, 4),
+            "risk_factors": list(self.risk_factors),
             "entities": [e.to_dict() for e in self.entities],
+            "embedding_dim": len(self.embedding),
             "dense_score": round(self.dense_score, 4),
             "sparse_score": round(self.sparse_score, 4),
             "rerank_score": round(self.rerank_score, 4),
             "retrieval_score": round(self.retrieval_score, 4),
             "metadata": self.metadata,
         }
+
+        if include_embedding:
+            payload["embedding"] = [round(float(value), 6) for value in self.embedding]
+
+        return payload
 
 
 @dataclass

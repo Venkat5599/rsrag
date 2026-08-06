@@ -121,14 +121,12 @@ def is_legal_text(text: str) -> bool:
 
 
 def stage1_ocr(pdf_bytes: bytes) -> str:
-    import pytesseract
-    from pdf2image import convert_from_bytes
+    # Text layer first, OCR only for scans - see pdf_text.
+    import pdf_text
 
-    logger.info("Stage 1: OCR...")
-    images    = convert_from_bytes(pdf_bytes, dpi=200)
-    pages     = [pytesseract.image_to_string(img, lang="eng") for img in images]
-    full_text = "\n".join(pages)
-    logger.info(f"Stage 1 done: {len(full_text)} chars, {len(images)} pages")
+    logger.info("Stage 1: extracting text...")
+    full_text = pdf_text.extract(pdf_bytes, dpi=200)
+    logger.info(f"Stage 1 done: {len(full_text)} chars")
     return full_text
 
 

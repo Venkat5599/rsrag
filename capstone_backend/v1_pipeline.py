@@ -58,14 +58,10 @@ def extract_clauses(text):
 
 def run_pipeline(pdf_bytes: bytes, filename=None):
     try:
-        import pytesseract
-        from pdf2image import convert_from_bytes
+        # Text layer first, OCR only for scans - see pdf_text.
+        import pdf_text
 
-
-        images = convert_from_bytes(pdf_bytes, dpi=200)
-        pages = [pytesseract.image_to_string(img, lang="eng") for img in images]
-        text = "\n".join(pages)
-
+        text = pdf_text.extract(pdf_bytes, dpi=200)
 
         return run_pipeline_on_text(text, filename)
 

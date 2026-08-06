@@ -24,6 +24,7 @@ from .bm25_index import BM25Index
 from .clause_chunker import ClauseChunker
 from .embeddings import EmbeddingBackend
 from .hybrid_retriever import HybridRetriever, RetrievalSignals
+from . import risk_classifier
 from .metadata_store import MetadataStore
 from .reranker import CrossEncoderReranker
 from .vector_index import VectorIndex
@@ -79,16 +80,28 @@ class KnowledgeBase:
         return description
 
     def index_chunks(self, chunks: Sequence[RetrievedChunk]) -> int:
-        """Add pre-built chunks to the metadata store and both indexes."""
+        """Add pre-built chunks to the metadata store and both indexes.
+
+        Both remaining section 7 fields are filled here, because this is the only
+        place that sees a chunk together with its vector: ``risk`` from the
+        rule-based classifier, and ``embedding`` from the encoder call that was
+        already being made for the FAISS index.
+        """
 
         accepted = [chunk for chunk in chunks if chunk.text and chunk.text.strip()]
 
         if not accepted:
             return 0
 
-        self._store.add_many(accepted)
+        risk_classifier.annotate_many(accepted)
 
         vectors = self._embeddings.encode([chunk.text for chunk in accepted])
+
+        for chunk, vector in zip(accepted, vectors):
+            chunk.embedding = [float(value) for value in vector]
+
+        # Stored after annotation so the metadata store indexes the populated risk.
+        self._store.add_many(accepted)
         self._vectors.add([chunk.chunk_id for chunk in accepted], vectors)
 
         for chunk in accepted:
@@ -145,9 +158,14 @@ class KnowledgeBase:
         top_k: int = 5,
         clause_filters: Optional[Sequence[str]] = None,
         contract_id: Optional[str] = None,
+        contract_ids: Optional[Sequence[str]] = None,
     ) -> List[RetrievedChunk]:
         return self._retriever.retrieve(
-            query, top_k=top_k, clause_filters=clause_filters, contract_id=contract_id
+            query,
+            top_k=top_k,
+            clause_filters=clause_filters,
+            contract_id=contract_id,
+            contract_ids=contract_ids,
         )
 
 

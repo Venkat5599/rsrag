@@ -122,12 +122,53 @@ class MetadataStore:
     def contracts(self) -> List[str]:
         return sorted(self._by_contract)
 
+    def scope_ids(
+        self,
+        contract_id: Optional[str] = None,
+        contract_ids: Optional[Sequence[str]] = None,
+    ) -> Set[str]:
+        """Chunk ids visible for this query: the union of the named contracts.
+
+        ``contract_ids`` is what makes a section 11 clause comparison possible - a
+        comparison spans two agreements, so the scope has to be a union rather than
+        a single contract. With neither argument the whole store is in scope.
+        """
+
+        names = self.scope_names(contract_id, contract_ids)
+
+        if not names:
+            return set(self._chunks)
+
+        scope: Set[str] = set()
+
+        for name in names:
+            scope |= self._by_contract.get(name, set())
+
+        return scope
+
+    @staticmethod
+    def scope_names(
+        contract_id: Optional[str] = None,
+        contract_ids: Optional[Sequence[str]] = None,
+    ) -> List[str]:
+        """De-duplicated, order-preserving list of the contract ids in scope."""
+
+        names: List[str] = []
+
+        for candidate in [contract_id, *(contract_ids or [])]:
+            cleaned = str(candidate or "").strip()
+            if cleaned and cleaned not in names:
+                names.append(cleaned)
+
+        return names
+
     def candidates(
         self,
         clause_filters: Optional[Sequence[str]] = None,
         contract_id: Optional[str] = None,
         entities: Optional[Sequence[str]] = None,
         min_candidates: int = 0,
+        contract_ids: Optional[Sequence[str]] = None,
     ) -> Set[str]:
         """Chunk ids worth scoring, narrowed by metadata.
 
@@ -148,11 +189,7 @@ class MetadataStore:
         strength for a heuristic.
         """
 
-        scope: Set[str] = (
-            set(self._by_contract.get(contract_id, set()))
-            if contract_id
-            else set(self._chunks)
-        )
+        scope = self.scope_ids(contract_id, contract_ids)
 
         if not scope:
             return set()

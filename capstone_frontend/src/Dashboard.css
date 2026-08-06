@@ -112,6 +112,50 @@ body {
   font-weight: 600;
 }
 
+/* Comparison scope. Spec section 11 needs more than one contract in play, so a
+   history row can be held for comparison without becoming the active document. */
+.history-item:not(.new-chat) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item.compared {
+  box-shadow: inset 2px 0 0 #534AB7;
+}
+
+.compare-toggle {
+  flex: none;
+  border: 1px solid #D9D6CE;
+  background: transparent;
+  color: #6b6b68;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: 0.15s ease;
+}
+
+.history-item:hover .compare-toggle,
+.compare-toggle.on {
+  opacity: 1;
+}
+
+.compare-toggle.on {
+  border-color: #534AB7;
+  background: #534AB7;
+  color: #fff;
+}
+
 .health-panel {
   margin-top: 22px;
   padding-top: 14px;
@@ -238,6 +282,25 @@ body {
 .context-file {
   color: #534AB7;
   font-weight: 600;
+}
+
+.context-file.compared {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+  color: #6b62c9;
+}
+
+.context-drop {
+  cursor: pointer;
+  color: #a8a5a0;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.context-drop:hover {
+  color: #534AB7;
 }
 
 .context-clear {

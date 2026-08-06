@@ -79,6 +79,61 @@ def _entity_match(query: str, chunk: RetrievedChunk) -> float:
     return min(hits / 2.0, 1.0)
 
 
+def _allocate_across_contracts(
+    chunks: Sequence[RetrievedChunk],
+    contract_ids: Sequence[str],
+    limit: int,
+) -> List[RetrievedChunk]:
+    """Interleave results so every contract in scope is actually represented.
+
+    Taking the global top-N across two contracts is the failure mode this exists to
+    prevent: whichever agreement scores higher fills every slot, and the answer then
+    reads as a comparison while being sourced from one side. Round-robin over the
+    per-contract rankings guarantees the losing contract still contributes evidence,
+    and any unused slots fall back to global order so a contract with few matching
+    clauses does not waste the budget.
+    """
+
+    if limit <= 0 or not chunks:
+        return []
+
+    buckets: Dict[str, List[RetrievedChunk]] = {name: [] for name in contract_ids}
+
+    for chunk in chunks:
+        buckets.setdefault(chunk.contract_id, []).append(chunk)
+
+    ordered_names = [name for name in contract_ids if buckets.get(name)]
+    ordered_names += [
+        name for name in buckets if name not in contract_ids and buckets[name]
+    ]
+
+    if not ordered_names:
+        return list(chunks)[:limit]
+
+    selected: List[RetrievedChunk] = []
+    seen: set = set()
+    depth = 0
+    deepest = max(len(bucket) for bucket in buckets.values())
+
+    while len(selected) < limit and depth < deepest:
+        for name in ordered_names:
+            bucket = buckets.get(name) or []
+            if depth < len(bucket) and len(selected) < limit:
+                chunk = bucket[depth]
+                selected.append(chunk)
+                seen.add(chunk.chunk_id)
+        depth += 1
+
+    for chunk in chunks:
+        if len(selected) >= limit:
+            break
+        if chunk.chunk_id not in seen:
+            selected.append(chunk)
+            seen.add(chunk.chunk_id)
+
+    return selected
+
+
 class HybridRetriever:
     """Implements the ``rag.retrieval.ClauseRetriever`` protocol."""
 
@@ -122,20 +177,31 @@ class HybridRetriever:
         query: str,
         clause_filters: Optional[Sequence[str]] = None,
         contract_id: Optional[str] = None,
+        contract_ids: Optional[Sequence[str]] = None,
     ) -> List[RetrievedChunk]:
         """Stages one to three: metadata filter, dense search, BM25 search, merge."""
 
+        scope_names = self._store.scope_names(contract_id, contract_ids)
+
         allowed = self._store.candidates(
-            clause_filters, contract_id, min_candidates=self._pool_size
+            clause_filters,
+            contract_id,
+            min_candidates=self._pool_size,
+            contract_ids=contract_ids,
         )
 
         if not allowed:
             return []
 
+        # A comparison spanning N contracts needs a pool deep enough that every
+        # contract is represented. Widening the pool per contract is what stops the
+        # higher-scoring agreement from filling all 25 slots on its own.
+        pool_size = self._pool_size * max(len(scope_names), 1)
+
         dense_hits = self._vectors.search(
-            self._embeddings.encode_one(query), self._pool_size, allowed_ids=allowed
+            self._embeddings.encode_one(query), pool_size, allowed_ids=allowed
         )
-        sparse_hits = self._bm25.search(query, self._pool_size, allowed_ids=allowed)
+        sparse_hits = self._bm25.search(query, pool_size, allowed_ids=allowed)
 
         dense_scores = {chunk_id: score for chunk_id, score in dense_hits}
         sparse_scores = {chunk_id: normalised for chunk_id, _, normalised in sparse_hits}
@@ -161,7 +227,10 @@ class HybridRetriever:
                     section=source.section,
                     page=source.page,
                     risk=source.risk,
+                    risk_score=source.risk_score,
+                    risk_factors=list(source.risk_factors),
                     entities=list(source.entities),
+                    embedding=list(source.embedding),
                     dense_score=max(0.0, min(1.0, dense_scores.get(chunk_id, 0.0))),
                     sparse_score=sparse_scores.get(chunk_id, 0.0),
                     metadata=dict(source.metadata),
@@ -173,6 +242,9 @@ class HybridRetriever:
             reverse=True,
         )
 
+        if len(scope_names) > 1:
+            return _allocate_across_contracts(merged, scope_names, self._pool_size)
+
         return merged[: self._pool_size]
 
     def retrieve(
@@ -181,13 +253,15 @@ class HybridRetriever:
         top_k: int = 5,
         clause_filters: Optional[Sequence[str]] = None,
         contract_id: Optional[str] = None,
+        contract_ids: Optional[Sequence[str]] = None,
     ) -> List[RetrievedChunk]:
         query = (query or "").strip()
 
         if not query or not len(self._store):
             return []
 
-        pool = self.candidates(query, clause_filters, contract_id)
+        scope_names = self._store.scope_names(contract_id, contract_ids)
+        pool = self.candidates(query, clause_filters, contract_id, contract_ids)
 
         if not pool:
             return []
@@ -227,4 +301,9 @@ class HybridRetriever:
 
         reranked.sort(key=lambda chunk: chunk.retrieval_score, reverse=True)
 
-        return reranked[: max(top_k or self._top_k, 1)]
+        limit = max(top_k or self._top_k, 1)
+
+        if len(scope_names) > 1:
+            return _allocate_across_contracts(reranked, scope_names, limit)
+
+        return reranked[:limit]

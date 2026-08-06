@@ -15,8 +15,31 @@ class ClauseRetriever(Protocol):
         top_k: int = 5,
         clause_filters: Optional[Sequence[str]] = None,
         contract_id: Optional[str] = None,
+        contract_ids: Optional[Sequence[str]] = None,
     ) -> List[RetrievedChunk]:
+        """Retrieve clause evidence.
+
+        ``contract_id`` scopes to one contract; ``contract_ids`` scopes to several,
+        which is what a section 11 clause comparison needs. Passing both is allowed
+        and the two scopes are unioned.
+        """
         ...
+
+
+def scoped_contract_ids(
+    contract_id: Optional[str] = None,
+    contract_ids: Optional[Sequence[str]] = None,
+) -> List[str]:
+    """De-duplicated, order-preserving contract scope shared by every retriever."""
+
+    names: List[str] = []
+
+    for candidate in [contract_id, *(contract_ids or [])]:
+        cleaned = str(candidate or "").strip()
+        if cleaned and cleaned not in names:
+            names.append(cleaned)
+
+    return names
 
 
 def _coerce_entities(raw_entities: Any) -> List[Entity]:
@@ -145,15 +168,17 @@ class InMemoryClauseRetriever:
         top_k: int = 5,
         clause_filters: Optional[Sequence[str]] = None,
         contract_id: Optional[str] = None,
+        contract_ids: Optional[Sequence[str]] = None,
     ) -> List[RetrievedChunk]:
         if not query or not self._chunks:
             return []
 
+        scope = scoped_contract_ids(contract_id, contract_ids)
         filters = {c.lower() for c in (clause_filters or [])}
         scored: List[RetrievedChunk] = []
 
         for chunk in self._chunks:
-            if contract_id and chunk.contract_id != contract_id:
+            if scope and chunk.contract_id not in scope:
                 continue
 
             dense = semantic.similarity(query, chunk.text, self._embedding_model)
@@ -182,7 +207,10 @@ class InMemoryClauseRetriever:
                 section=chunk.section,
                 page=chunk.page,
                 risk=chunk.risk,
+                risk_score=chunk.risk_score,
+                risk_factors=list(chunk.risk_factors),
                 entities=list(chunk.entities),
+                embedding=list(chunk.embedding),
                 dense_score=dense,
                 sparse_score=sparse,
                 rerank_score=0.0,
@@ -192,4 +220,53 @@ class InMemoryClauseRetriever:
             scored.append(candidate)
 
         scored.sort(key=lambda item: item.retrieval_score, reverse=True)
-        return scored[:max(top_k, 1)]
+
+        limit = max(top_k, 1)
+
+        if len(scope) > 1:
+            return _interleave_by_contract(scored, scope, limit)
+
+        return scored[:limit]
+
+
+def _interleave_by_contract(
+    chunks: Sequence[RetrievedChunk],
+    contract_ids: Sequence[str],
+    limit: int,
+) -> List[RetrievedChunk]:
+    """Round-robin so a multi-contract query gets evidence from every contract.
+
+    Without this a comparison across two agreements takes the global top-N, the
+    stronger-matching contract fills every slot, and the answer reads as a
+    comparison while being sourced from one side only.
+    """
+
+    buckets: Dict[str, List[RetrievedChunk]] = {}
+
+    for chunk in chunks:
+        buckets.setdefault(chunk.contract_id, []).append(chunk)
+
+    ordered = [name for name in contract_ids if buckets.get(name)]
+    ordered += [name for name in buckets if name not in contract_ids]
+
+    selected: List[RetrievedChunk] = []
+    taken: set = set()
+    depth = 0
+    deepest = max((len(bucket) for bucket in buckets.values()), default=0)
+
+    while len(selected) < limit and depth < deepest:
+        for name in ordered:
+            bucket = buckets.get(name) or []
+            if depth < len(bucket) and len(selected) < limit:
+                selected.append(bucket[depth])
+                taken.add(bucket[depth].chunk_id)
+        depth += 1
+
+    for chunk in chunks:
+        if len(selected) >= limit:
+            break
+        if chunk.chunk_id not in taken:
+            selected.append(chunk)
+            taken.add(chunk.chunk_id)
+
+    return selected

@@ -204,27 +204,23 @@ def preload_models():
         _semantic_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
-import pytesseract
-from pdf2image import convert_from_bytes
+import pdf_text
+
 
 def stage1_ocr(pdf_bytes: bytes) -> str:
-    logger.info("Stage 1: OCR...")
+    """Stage 1: get the contract text out of the PDF.
 
-    images = convert_from_bytes(pdf_bytes, dpi=300)
+    Reads the embedded text layer when there is one and only rasterises + OCRs a
+    genuine scan. See pdf_text for why that order matters: OCR needs poppler and
+    tesseract on PATH, and going to it first made every upload fail on a machine
+    without them.
+    """
 
-    pages = []
-    for img in images:
-        text = pytesseract.image_to_string(
-            img,
-            lang="eng",
-            config="--oem 3 --psm 6"
-        )
-        pages.append(text)
+    logger.info("Stage 1: extracting text...")
 
-    full_text = "\n".join(pages)
+    full_text = pdf_text.extract(pdf_bytes, dpi=300)
 
-    print("OCR SAMPLE:", full_text[:500])
-    logger.info(f"OCR done: {len(full_text)} chars")
+    logger.info(f"Text extraction done: {len(full_text)} chars")
 
     return full_text
 

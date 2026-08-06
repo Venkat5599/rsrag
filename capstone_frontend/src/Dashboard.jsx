@@ -219,6 +219,11 @@ export default function Dashboard() {
   const [history, setHistory] = useState([]);
   const [messages, setMessages] = useState([]);
   const [activeDoc, setActiveDoc] = useState(null);
+  /* Extra contracts held alongside activeDoc. Spec section 11 routes clause
+     comparison to the grounded LLM, and a comparison needs more than one agreement
+     in scope - with only one the backend answers from a single contract and says so
+     in a warning. Kept separate from activeDoc so the analysed document stays primary. */
+  const [compareDocs, setCompareDocs] = useState([]);
   const [health, setHealth] = useState(null);
 
   const fileRef = useRef(null);
@@ -299,6 +304,8 @@ export default function Dashboard() {
       ]);
 
       setActiveDoc({ docId: data.docId, filename: data.filename });
+      // A contract cannot be compared against itself.
+      setCompareDocs((previous) => previous.filter((held) => held !== data.docId));
       setMode("ask");
       setSidebar(false);
     } catch {
@@ -371,6 +378,24 @@ export default function Dashboard() {
     }
   };
 
+  /* The scope sent to the backend: the analysed contract first, then anything
+     picked for comparison. docId stays on the request so single-contract behaviour
+     is byte-for-byte what it was before. */
+  const scopedDocIds = () =>
+    [activeDoc?.docId, ...compareDocs].filter(
+      (docId, index, all) => docId && all.indexOf(docId) === index
+    );
+
+  const toggleCompare = (docId) => {
+    if (activeDoc && activeDoc.docId === docId) return;
+
+    setCompareDocs((previous) =>
+      previous.includes(docId)
+        ? previous.filter((held) => held !== docId)
+        : [...previous, docId]
+    );
+  };
+
   const handleAsk = async () => {
     if (!text.trim() || !activeDoc) return;
 
@@ -383,7 +408,11 @@ export default function Dashboard() {
       const res = await fetch(`${API}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, docId: activeDoc.docId })
+        body: JSON.stringify({
+          question,
+          docId: activeDoc.docId,
+          docIds: scopedDocIds()
+        })
       });
 
       const data = await res.json();
@@ -435,7 +464,11 @@ export default function Dashboard() {
       const res = await fetch(`${API}/retrieve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: message.question, docId: activeDoc?.docId })
+        body: JSON.stringify({
+          question: message.question,
+          docId: activeDoc?.docId,
+          docIds: scopedDocIds()
+        })
       });
 
       const data = await res.json();
@@ -464,6 +497,7 @@ export default function Dashboard() {
           onClick={() => {
             setMessages([]);
             setActiveDoc(null);
+            setCompareDocs([]);
             setMode("analyze");
             setSidebar(false);
           }}
@@ -471,17 +505,40 @@ export default function Dashboard() {
           + New Chat
         </div>
 
-        {history.map((item) => (
-          <div
-            key={item.docId}
-            className={`history-item ${
-              activeDoc && activeDoc.docId === item.docId ? "active" : ""
-            }`}
-            onClick={() => loadHistoryItem(item.docId)}
-          >
-            {item.filename}
-          </div>
-        ))}
+        {history.map((item) => {
+          const isActive = activeDoc && activeDoc.docId === item.docId;
+          const isCompared = compareDocs.includes(item.docId);
+
+          return (
+            <div
+              key={item.docId}
+              className={`history-item ${isActive ? "active" : ""} ${
+                isCompared ? "compared" : ""
+              }`}
+              onClick={() => loadHistoryItem(item.docId)}
+            >
+              <span className="history-name">{item.filename}</span>
+
+              {!isActive && activeDoc && (
+                <button
+                  type="button"
+                  className={`compare-toggle ${isCompared ? "on" : ""}`}
+                  title={
+                    isCompared
+                      ? "Remove from comparison scope"
+                      : "Add to comparison scope"
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleCompare(item.docId);
+                  }}
+                >
+                  {isCompared ? "In comparison" : "Compare"}
+                </button>
+              )}
+            </div>
+          );
+        })}
 
         {health && health.retrieval && (
           <div className="health-panel">
@@ -601,10 +658,29 @@ export default function Dashboard() {
             <div className="context-bar">
               <span className="context-label">Asking about</span>
               <span className="context-file">{activeDoc.filename}</span>
+
+              {compareDocs.map((docId) => {
+                const item = history.find((entry) => entry.docId === docId);
+
+                return (
+                  <span key={docId} className="context-file compared">
+                    + {item ? item.filename : docId.slice(0, 8)}
+                    <span
+                      className="context-drop"
+                      title="Remove from comparison scope"
+                      onClick={() => toggleCompare(docId)}
+                    >
+                      ×
+                    </span>
+                  </span>
+                );
+              })}
+
               <span
                 className="context-clear"
                 onClick={() => {
                   setActiveDoc(null);
+                  setCompareDocs([]);
                   setMode("analyze");
                 }}
               >

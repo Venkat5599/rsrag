@@ -12,8 +12,15 @@ from . import router
 from rag.config import RagConfig, load_config
 from .llm_client import LLMClient
 from .prompt_builder import build_grounded_prompt
-from rag.retrieval import ClauseRetriever
-from rag.schemas import AnswerResult, AnswerStrategy, Entity, QueryPlan, RetrievedChunk
+from rag.retrieval import ClauseRetriever, scoped_contract_ids
+from rag.schemas import (
+    AnswerResult,
+    AnswerStrategy,
+    Entity,
+    QueryIntent,
+    QueryPlan,
+    RetrievedChunk,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +57,7 @@ class AnswerEngine:
         query: str,
         contract_id: Optional[str] = None,
         top_k: Optional[int] = None,
+        contract_ids: Optional[Sequence[str]] = None,
     ) -> AnswerResult:
         started = time.perf_counter()
         query = (query or "").strip()
@@ -58,27 +66,71 @@ class AnswerEngine:
         if not query:
             return self._empty_result(plan, "empty query", started)
 
-        evidence = self._retrieve(plan, contract_id, top_k)
+        evidence = self._retrieve(plan, contract_id, top_k, contract_ids)
 
         if not evidence:
             return self._empty_result(plan, "no evidence retrieved", started)
 
+        scope_warnings = self._scope_warnings(plan, contract_id, contract_ids, evidence)
+
         if plan.strategy is AnswerStrategy.GROUNDED_LLM:
-            return self._answer_with_llm(plan, evidence, started)
+            return self._answer_with_llm(plan, evidence, started, scope_warnings)
 
         if plan.strategy is AnswerStrategy.ENTITY_EXTRACTION:
-            return self._answer_with_entities(plan, evidence, started)
+            return self._answer_with_entities(plan, evidence, started, scope_warnings)
 
         if plan.strategy is AnswerStrategy.RETRIEVER_ONLY:
-            return self._answer_with_retriever(plan, evidence, started)
+            return self._answer_with_retriever(plan, evidence, started, scope_warnings)
 
-        return self._answer_with_extractive_qa(plan, evidence, started)
+        return self._answer_with_extractive_qa(
+            plan, evidence, started, extra_warnings=scope_warnings
+        )
+
+    def _scope_warnings(
+        self,
+        plan: QueryPlan,
+        contract_id: Optional[str],
+        contract_ids: Optional[Sequence[str]],
+        evidence: Sequence[RetrievedChunk],
+    ) -> List[str]:
+        """Say so out loud when a comparison has nothing to compare against.
+
+        Section 11 routes clause comparison to the grounded LLM, but a comparison
+        only means something when more than one contract is in scope. Answering a
+        two-contract question from one contract, confidently and without saying so,
+        is the worst failure mode this system can have, so it is named here rather
+        than left silent.
+        """
+
+        if plan.intent is not QueryIntent.CLAUSE_COMPARISON:
+            return []
+
+        requested = scoped_contract_ids(contract_id, contract_ids)
+        represented = {chunk.contract_id for chunk in evidence if chunk.contract_id}
+
+        warnings: List[str] = []
+
+        if len(requested) == 1 or (not requested and len(represented) < 2):
+            warnings.append(
+                "comparison requested but only one contract is in scope; "
+                "the answer describes a single agreement"
+            )
+        elif len(requested) > 1:
+            missing = [name for name in requested if name not in represented]
+            if missing:
+                warnings.append(
+                    "comparison is one-sided: no evidence retrieved from "
+                    + ", ".join(missing)
+                )
+
+        return warnings
 
     def _retrieve(
         self,
         plan: QueryPlan,
         contract_id: Optional[str],
         top_k: Optional[int],
+        contract_ids: Optional[Sequence[str]] = None,
     ) -> List[RetrievedChunk]:
         limit = top_k or self._config.top_k_context
 
@@ -88,7 +140,20 @@ class AnswerEngine:
                 top_k=limit,
                 clause_filters=plan.clause_filters,
                 contract_id=contract_id,
+                contract_ids=contract_ids,
             )
+        except TypeError:
+            # A retriever written against the older single-contract protocol.
+            try:
+                retrieved = self._retriever.retrieve(
+                    plan.query,
+                    top_k=limit,
+                    clause_filters=plan.clause_filters,
+                    contract_id=contract_id,
+                )
+            except Exception as error:
+                logger.error("Retrieval failed: %s", error)
+                return []
         except Exception as error:
             logger.error("Retrieval failed: %s", error)
             return []
@@ -204,13 +269,14 @@ class AnswerEngine:
         plan: QueryPlan,
         evidence: Sequence[RetrievedChunk],
         started: float,
+        extra_warnings: Optional[Sequence[str]] = None,
     ) -> AnswerResult:
         labels = entity_lookup.requested_labels(plan.query)
         entities, model_used = entity_lookup.extract_entities(
             evidence, self._config.ner_model, labels
         )
 
-        warnings: List[str] = []
+        warnings: List[str] = list(extra_warnings or [])
 
         if not model_used:
             warnings.append("entity model unavailable, stored clause entities used")
@@ -235,6 +301,7 @@ class AnswerEngine:
         plan: QueryPlan,
         evidence: Sequence[RetrievedChunk],
         started: float,
+        extra_warnings: Optional[Sequence[str]] = None,
     ) -> AnswerResult:
         blocks: List[str] = []
 
@@ -251,6 +318,7 @@ class AnswerEngine:
             answer_model_score=evidence[0].retrieval_score if evidence else 0.0,
             generator="retriever_only",
             started=started,
+            warnings=list(extra_warnings or []),
         )
 
     def _answer_with_llm(
@@ -258,6 +326,7 @@ class AnswerEngine:
         plan: QueryPlan,
         evidence: Sequence[RetrievedChunk],
         started: float,
+        extra_warnings: Optional[Sequence[str]] = None,
     ) -> AnswerResult:
         generation = grounded_llm.generate(
             plan.query, plan.intent, evidence, self._config, self._llm
@@ -273,6 +342,7 @@ class AnswerEngine:
                 started=started,
                 prompt=generation.prompt,
                 evidence_map=generation.evidence_map,
+                warnings=list(extra_warnings or []),
             )
 
         reason = generation.error or "unknown error"
@@ -282,7 +352,8 @@ class AnswerEngine:
             evidence,
             started,
             extra_warnings=[
-                f"grounded generation failed ({reason}), extractive fallback used"
+                *(extra_warnings or []),
+                f"grounded generation failed ({reason}), extractive fallback used",
             ],
             prompt=generation.prompt,
         )

@@ -87,11 +87,30 @@ def is_indexed(contract_id: str) -> bool:
     return contract_id in _indexed_contracts
 
 
+def _annotate_risk(chunks: Sequence[RetrievedChunk]) -> None:
+    """Fill the section 7 ``risk`` field before indexing.
+
+    The KnowledgeBase does this itself, but the baseline in-memory retriever does
+    not, and the fallback path is exactly where an empty ``risk`` would otherwise
+    reappear. Imported locally because rag/ is the shared layer and must not depend
+    on kiran_retrieval/ at module import time.
+    """
+
+    try:
+        from kiran_retrieval import risk_classifier
+    except Exception:  # pragma: no cover - retrieval package unavailable
+        return
+
+    risk_classifier.annotate_many(chunks)
+
+
 def index_chunks(contract_id: str, chunks: Sequence[RetrievedChunk]) -> int:
     retriever = get_retriever()
 
     if not chunks or not hasattr(retriever, "add"):
         return 0
+
+    _annotate_risk(chunks)
 
     retriever.add(list(chunks))
     _indexed_contracts.add(contract_id)
